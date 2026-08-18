@@ -1,0 +1,100 @@
+"""
+config.py — システム全体の設定管理
+
+.env から環境変数を読み込み、計測スケジュール・状態遷移テーブル・
+アンチスクレイピングパラメータなどの定数を一元管理します。
+"""
+
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# .env ファイルの読み込み
+load_dotenv(Path(__file__).parent / ".env")
+
+# =============================================================================
+# Notion API 設定
+# =============================================================================
+NOTION_TOKEN: str = os.getenv("NOTION_TOKEN", "")
+ARTWORKS_DB_ID: str = os.getenv("ARTWORKS_DB_ID", "")
+METRICS_DB_ID: str = os.getenv("METRICS_DB_ID", "")
+USERS_DB_ID: str = os.getenv("USERS_DB_ID", "")
+
+# =============================================================================
+# Playwright 認証設定
+# =============================================================================
+X_AUTH_STATE_PATH: str = os.getenv(
+    "X_AUTH_STATE_PATH",
+    str(Path(__file__).parent / "auth_state.json"),
+)
+
+# =============================================================================
+# 計測スケジュール定義
+# =============================================================================
+# 各ステージの定義:
+#   name       : ステータス名（Notion セレクトプロパティ値）
+#   offset_sec : 投稿日時からの経過秒数
+#   with_fans  : True ならユーザー照合（いいねモーダル取得）を実施
+SCHEDULE_STAGES: list[dict] = [
+    {"name": "5m",  "offset_sec": 300,     "with_fans": False},
+    {"name": "15m", "offset_sec": 900,     "with_fans": False},
+    {"name": "30m", "offset_sec": 1800,    "with_fans": False},
+    {"name": "1h",  "offset_sec": 3600,    "with_fans": True},
+    {"name": "2h",  "offset_sec": 7200,    "with_fans": False},
+    {"name": "3h",  "offset_sec": 10800,   "with_fans": False},
+    {"name": "6h",  "offset_sec": 21600,   "with_fans": True},
+    {"name": "12h", "offset_sec": 43200,   "with_fans": False},
+    {"name": "24h", "offset_sec": 86400,   "with_fans": True},
+    {"name": "48h", "offset_sec": 172800,  "with_fans": True},
+]
+
+# ステージ名のリスト（状態遷移用）
+STAGE_NAMES: list[str] = [s["name"] for s in SCHEDULE_STAGES]
+
+# ステージ名 → 定義辞書のマッピング
+STAGE_MAP: dict[str, dict] = {s["name"]: s for s in SCHEDULE_STAGES}
+
+# =============================================================================
+# アンチスクレイピング パラメータ
+# =============================================================================
+# ランダムウェイト範囲（秒）
+WAIT_MIN_SEC: float = 2.0
+WAIT_MAX_SEC: float = 5.0
+
+# いいねモーダル スクロール制限
+MAX_LIKERS: int = 200          # 最大取得ユーザー数
+MAX_SCROLL_COUNT: int = 5      # 最大スクロール回数
+
+# GraphQL レスポンス待機タイムアウト（秒）
+GRAPHQL_TIMEOUT_SEC: float = 15.0
+
+# 対象ゼロ時の無負荷終了待機（秒）
+NO_TARGET_WAIT_SEC: float = 0.5
+
+# =============================================================================
+# Notion プロパティ名マッピング
+# =============================================================================
+# 作品マスターDB
+AW_PROP_TITLE = "作品名"
+AW_PROP_URL = "URL"
+AW_PROP_POSTED_AT = "投稿日時"
+AW_PROP_STATUS = "ステータス"
+AW_PROP_NEXT_SCHEDULE = "次回予定"
+AW_PROP_NEW_FANS_COUNT = "はじめて反応した人の数"
+AW_PROP_METRICS_REL = "時系列ログ"
+AW_PROP_USERS_REL = "反応ユーザー"
+
+# 時系列メトリクスDB
+MS_PROP_TITLE = "ログ名"
+MS_PROP_PARENT_REL = "親ツイート"
+MS_PROP_MEASURED_AT = "計測日時"
+MS_PROP_ELAPSED = "経過時間"
+MS_PROP_IMPRESSIONS = "Impressions"
+MS_PROP_LIKES = "Likes"
+MS_PROP_RETWEETS = "Retweets"
+MS_PROP_NEW_FANS = "New Fans"
+
+# 反応者マスターDB
+UM_PROP_TITLE = "ユーザーID"
+UM_PROP_FIRST_REACTION_AT = "初回反応日時"
+UM_PROP_FIRST_ARTWORK_REL = "初回反応作品"
