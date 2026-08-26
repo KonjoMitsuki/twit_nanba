@@ -5,7 +5,7 @@ notion_client_wrapper/metrics_db.py — 時系列メトリクスDB (Metrics Snap
 時系列メトリクスDBに保存する操作を提供します。
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import config
 from notion_client_wrapper import get_client
@@ -37,15 +37,16 @@ def create_snapshot(
 
     # ログ名: "1h (08/18 22:00)" 形式
     # ローカル時間で表示するため JST に変換（+9h）
-    from datetime import timedelta
-
     jst = timezone(timedelta(hours=9))
     now_jst = now.astimezone(jst)
     log_name = f"{stage} ({now_jst.strftime('%m/%d %H:%M')})"
 
-    page = client.pages.create(
-        parent={"database_id": config.METRICS_DB_ID},
-        properties={
+    page = client.request(
+        path="pages",
+        method="POST",
+        body={
+            "parent": {"data_source_id": config.METRICS_DB_ID},
+            "properties": {
             config.MS_PROP_TITLE: {
                 "title": [{"text": {"content": log_name}}],
             },
@@ -69,6 +70,7 @@ def create_snapshot(
             },
             config.MS_PROP_NEW_FANS: {
                 "number": new_fans_count,
+            },
             },
         },
     )

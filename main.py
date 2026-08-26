@@ -30,6 +30,7 @@ from processing import scheduler, new_fans
 from scraper.browser import create_browser_context, random_wait
 from scraper.metrics import fetch_metrics
 from scraper.fans import fetch_likers
+from scraper.auto_detect import should_check_now, check_new_art_post
 
 # ロギング設定
 logging.basicConfig(
@@ -167,10 +168,20 @@ async def process_artwork(
 
 
 async def run(headless: bool = True) -> None:
-    """メイン実行フロー。"""
+    """メイン実行フロー。
+
+    【フロー概要】
+    0. 新着イラスト自動検知（15〜30分に1回、ブラウザセッション共有）
+    1. 対象作品の取得
+    2. ユーザー照合の事前準備
+    3. ブラウザ起動 & 各作品を処理
+    """
     logger.info("=" * 60)
     logger.info("X Art Analytics System 実行開始")
     logger.info("=" * 60)
+
+    # ─── 0. 新着チェックが必要か判定 ───
+    need_auto_detect = should_check_now()
 
     # ─── 1. 対象作品の取得 ───
     try:
@@ -179,8 +190,8 @@ async def run(headless: bool = True) -> None:
         logger.error("Notion からの作品取得に失敗: %s", e)
         sys.exit(1)
 
-    if not due_pages:
-        logger.info("対象作品なし — 無負荷終了")
+    if not due_pages and not need_auto_detect:
+        logger.info("対象作品なし & 新着チェック不要 — 無負荷終了")
         time.sleep(config.NO_TARGET_WAIT_SEC)
         return
 
@@ -207,6 +218,27 @@ async def run(headless: bool = True) -> None:
 
     # ─── 3. ブラウザ起動 & 各作品を処理 ───
     async with create_browser_context(headless=headless) as (context, page):
+
+        # ── 新着イラスト自動検知（ブラウザセッション共有） ──
+        # メトリクス取得のためにブラウザを開いた「ついで」に
+        # プロフィールを確認し、無駄なブラウザ起動を削減する
+        if need_auto_detect:
+            try:
+                detected = await check_new_art_post(
+                    page, config.X_SCREEN_NAME
+                )
+                if detected:
+                    # 新規登録が行われた場合、対象作品リストを再取得
+                    # （次回のcron実行で拾われるので、ここでは再取得不要）
+                    logger.info(
+                        "📌 新規イラストを登録済み — "
+                        "次回実行時に追跡を開始します"
+                    )
+                await random_wait()
+            except Exception as e:
+                logger.error("新着検知処理でエラー: %s", e)
+
+        # ── メトリクス取得 & ユーザー照合 ──
         total_new_fans: set[str] = set()
 
         for i, artwork_info in enumerate(artwork_list):

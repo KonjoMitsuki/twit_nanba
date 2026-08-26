@@ -1,97 +1,60 @@
 """
-setup_auth.py — 初回認証セッション保存スクリプト
-
-Playwright で Chromium を visible モードで起動し、ユーザーが手動で
-X (Twitter) にログインした後、セッション Cookie を auth_state.json
-として保存します。
-
-以降のスクリプト実行では、保存された auth_state.json をロードすることで
-ID/PW による都度ログインを回避します。
-
-使い方:
-    python setup_auth.py
-    python setup_auth.py --output /path/to/auth_state.json
+generate_auth.py — ブラウザのCookieから直接 auth_state.json を生成するスクリプト
 """
-
-import argparse
-import asyncio
-import sys
+import json
+import time
 from pathlib import Path
 
-from playwright.async_api import async_playwright
-
-
-async def run(output_path: str) -> None:
-    """ブラウザを起動し、手動ログイン後にセッションを保存する。"""
+def main():
     print("=" * 60)
-    print("X (Twitter) 認証セッション保存スクリプト")
+    print("X (Twitter) Cookie ➔ auth_state.json 変換ツール")
     print("=" * 60)
-    print()
-    print("ブラウザが開きます。X (Twitter) にログインしてください。")
-    print("ログイン完了後、ホームタイムラインが表示されたら")
-    print("ターミナルに戻って Enter キーを押してください。")
-    print()
+    print("普段Xを使っているブラウザ（Chrome / Edge / Zen等）で")
+    print("F12キー（開発者ツール）を開いて取得したCookieを入力してください。\n")
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=False,
-            args=["--no-sandbox"],
-        )
-        context = await browser.new_context(
-            viewport={"width": 1280, "height": 900},
-            locale="ja-JP",
-            timezone_id="Asia/Tokyo",
-        )
-        page = await context.new_page()
+    auth_token = input("1. auth_token の値: ").strip()
+    ct0 = input("2. ct0 の値: ").strip()
 
-        # X のログインページへ遷移
-        await page.goto("https://x.com/login")
+    if not auth_token or not ct0:
+        print("❌ エラー: 両方の値を入力してください。")
+        return
 
-        # ユーザーの操作を待機
-        print("⏳ ログインを待機中...")
-        print("   ログインが完了したら、ここで Enter キーを押してください。")
-        print()
+    # 1年後のUNIX時間を有効期限として設定
+    expires = int(time.time()) + 31536000
 
-        # 非同期で標準入力を待つ
-        await asyncio.get_event_loop().run_in_executor(None, input)
+    storage_state = {
+        "cookies": [
+            {
+                "name": "auth_token",
+                "value": auth_token,
+                "domain": ".x.com",
+                "path": "/",
+                "expires": expires,
+                "httpOnly": True,
+                "secure": True,
+                "sameSite": "None"
+            },
+            {
+                "name": "ct0",
+                "value": ct0,
+                "domain": ".x.com",
+                "path": "/",
+                "expires": expires,
+                "httpOnly": False,
+                "secure": True,
+                "sameSite": "Lax"
+            }
+        ],
+        "origins": []
+    }
 
-        # 現在のページが認証済みか簡易チェック
-        current_url = page.url
-        if "login" in current_url.lower():
-            print("⚠️  まだログインページのようです。続行しますか？")
-            print("   Enter で続行、Ctrl+C でキャンセル")
-            await asyncio.get_event_loop().run_in_executor(None, input)
+    output_path = Path("./auth_state.json")
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(storage_state, f, indent=2)
 
-        # セッション状態を保存
-        output_file = Path(output_path)
-        await context.storage_state(path=str(output_file))
-
-        print(f"✅ 認証セッションを保存しました: {output_file}")
-        print()
-        print("以降は main.py / register_artwork.py の実行時に")
-        print("このファイルが自動的にロードされます。")
-
-        await browser.close()
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="X (Twitter) 認証セッション保存スクリプト",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default="./auth_state.json",
-        help="セッションファイルの保存先パス（デフォルト: ./auth_state.json）",
-    )
-    args = parser.parse_args()
-
-    try:
-        asyncio.run(run(args.output))
-    except KeyboardInterrupt:
-        print("\nキャンセルされました。")
-        sys.exit(0)
-
+    print("\n" + "=" * 60)
+    print(f"🎉 成功: {output_path.resolve()} を生成しました！")
+    print("=" * 60)
 
 if __name__ == "__main__":
     main()

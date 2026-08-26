@@ -98,3 +98,19 @@ MS_PROP_NEW_FANS = "New Fans"
 UM_PROP_TITLE = "ユーザーID"
 UM_PROP_FIRST_REACTION_AT = "初回反応日時"
 UM_PROP_FIRST_ARTWORK_REL = "初回反応作品"
+
+# =============================================================================
+# 新着イラスト自動検知モジュール設定
+# =============================================================================
+# 監視対象の X スクリーンネーム（@ なし）
+X_SCREEN_NAME: str = os.getenv("X_SCREEN_NAME", "")
+
+# プロフィール確認の最短・最長間隔（秒）
+# 15〜30分に1回に抑え、人間がリロードする頻度と同等にする（1日48〜96回）
+AUTO_DETECT_INTERVAL_MIN: int = 15 * 60   # 最短15分
+AUTO_DETECT_INTERVAL_MAX: int = 30 * 60   # 最長30分
+
+# 最終チェック時刻の永続化ファイルパス
+AUTO_DETECT_STATE_FILE: str = str(
+    Path(__file__).parent / ".auto_detect_last_check"
+)
