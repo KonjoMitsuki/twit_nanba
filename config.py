@@ -76,6 +76,7 @@ NO_TARGET_WAIT_SEC: float = 0.5
 # =============================================================================
 # 作品マスターDB
 AW_PROP_TITLE = "作品名"
+AW_PROP_IMAGE = "画像"
 AW_PROP_URL = "URL"
 AW_PROP_POSTED_AT = "投稿日時"
 AW_PROP_STATUS = "ステータス"

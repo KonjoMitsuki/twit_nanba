@@ -70,7 +70,12 @@ def find_by_tweet_url(url: str) -> dict[str, Any] | None:
     return results[0] if results else None
 
 
-def create_artwork(url: str, title: str, posted_at: datetime) -> str:
+def create_artwork(
+    url: str,
+    title: str,
+    posted_at: datetime,
+    image_url: str = None,
+) -> str:
     """新規作品をマスターDBに登録する。"""
     client = get_client()
     first_stage = config.SCHEDULE_STAGES[0]
@@ -78,25 +83,43 @@ def create_artwork(url: str, title: str, posted_at: datetime) -> str:
 
     next_schedule = calculate_next_schedule(posted_at, first_stage["name"])
 
+    properties: dict[str, Any] = {
+        config.AW_PROP_TITLE: {"title": [{"text": {"content": title}}]},
+        config.AW_PROP_URL: {"url": url},
+        config.AW_PROP_POSTED_AT: {"date": {"start": posted_at.isoformat()}},
+        config.AW_PROP_STATUS: {"select": {"name": first_stage["name"]}},
+        config.AW_PROP_NEXT_SCHEDULE: {"date": {"start": next_schedule.isoformat()}},
+        config.AW_PROP_NEW_FANS_COUNT: {"number": 0},
+    }
+    if image_url:
+        properties[config.AW_PROP_IMAGE] = {
+            "files": [
+                {
+                    "name": "サムネイル",
+                    "type": "external",
+                    "external": {"url": image_url},
+                }
+            ]
+        }
+
     page = client.request(
         path="pages",
         method="POST",
         body={
             "parent": {"data_source_id": config.ARTWORKS_DB_ID},
-            "properties": {
-            config.AW_PROP_TITLE: {"title": [{"text": {"content": title}}]},
-            config.AW_PROP_URL: {"url": url},
-            config.AW_PROP_POSTED_AT: {"date": {"start": posted_at.isoformat()}},
-            config.AW_PROP_STATUS: {"select": {"name": first_stage["name"]}},
-            config.AW_PROP_NEXT_SCHEDULE: {"date": {"start": next_schedule.isoformat()}},
-            config.AW_PROP_NEW_FANS_COUNT: {"number": 0},
-            },
+            "properties": properties,
         },
     )
     return page["id"]
 
 
-def create_artwork_auto(url: str, title: str, posted_at: datetime, initial_stage: str) -> str:
+def create_artwork_auto(
+    url: str,
+    title: str,
+    posted_at: datetime,
+    initial_stage: str,
+    image_url: str = None,
+) -> str:
     """自動検知用の新規作品登録。"""
     if initial_stage not in config.STAGE_MAP:
         raise ValueError(f"不明なステージ名: {initial_stage}")
@@ -106,19 +129,31 @@ def create_artwork_auto(url: str, title: str, posted_at: datetime, initial_stage
 
     next_schedule = calculate_next_schedule(posted_at, initial_stage)
 
+    properties: dict[str, Any] = {
+        config.AW_PROP_TITLE: {"title": [{"text": {"content": title}}]},
+        config.AW_PROP_URL: {"url": url},
+        config.AW_PROP_POSTED_AT: {"date": {"start": posted_at.isoformat()}},
+        config.AW_PROP_STATUS: {"select": {"name": initial_stage}},
+        config.AW_PROP_NEXT_SCHEDULE: {"date": {"start": next_schedule.isoformat()}},
+        config.AW_PROP_NEW_FANS_COUNT: {"number": 0},
+    }
+    if image_url:
+        properties[config.AW_PROP_IMAGE] = {
+            "files": [
+                {
+                    "name": "サムネイル",
+                    "type": "external",
+                    "external": {"url": image_url},
+                }
+            ]
+        }
+
     page = client.request(
         path="pages",
         method="POST",
         body={
             "parent": {"data_source_id": config.ARTWORKS_DB_ID},
-            "properties": {
-            config.AW_PROP_TITLE: {"title": [{"text": {"content": title}}]},
-            config.AW_PROP_URL: {"url": url},
-            config.AW_PROP_POSTED_AT: {"date": {"start": posted_at.isoformat()}},
-            config.AW_PROP_STATUS: {"select": {"name": initial_stage}},
-            config.AW_PROP_NEXT_SCHEDULE: {"date": {"start": next_schedule.isoformat()}},
-            config.AW_PROP_NEW_FANS_COUNT: {"number": 0},
-            },
+            "properties": properties,
         },
     )
     return page["id"]
