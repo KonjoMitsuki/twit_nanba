@@ -1,7 +1,7 @@
 """
 notion_client_wrapper — Notion API ラッパーパッケージ
 
-作品マスターDB, 時系列メトリクスDB, 反応者マスターDB への
+作品マスターDBと時系列メトリクスDBへの
 CRUD 操作を提供します。
 """
 

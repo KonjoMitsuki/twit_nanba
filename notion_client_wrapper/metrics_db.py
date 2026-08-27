@@ -18,6 +18,7 @@ def create_snapshot(
     likes: int,
     retweets: int,
     new_fans_count: int = 0,
+    followers: int = 0,
 ) -> str:
     """時系列メトリクスDBにスナップショット行を挿入する。
 
@@ -28,6 +29,7 @@ def create_snapshot(
         likes: いいね数。
         retweets: リツイート数。
         new_fans_count: このステージで検知された新規反応者数。
+        followers: 投稿者のフォロワー数。
 
     Returns:
         str: 作成されたスナップショットページの ID。
@@ -70,6 +72,9 @@ def create_snapshot(
             },
             config.MS_PROP_NEW_FANS: {
                 "number": new_fans_count,
+            },
+            config.MS_PROP_FOLLOWERS: {
+                "number": followers,
             },
             },
         },

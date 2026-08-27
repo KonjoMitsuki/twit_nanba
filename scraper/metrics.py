@@ -93,6 +93,13 @@ def _parse_metrics(tweet_result: dict[str, Any]) -> dict[str, Any]:
 
     likes = legacy.get("favorite_count", 0)
     retweets = legacy.get("retweet_count", 0)
+    followers = (
+        tweet_result.get("core", {})
+        .get("user_results", {})
+        .get("result", {})
+        .get("legacy", {})
+        .get("followers_count", 0)
+    )
 
     # ツイート本文（作品名として利用可能）
     full_text = legacy.get("full_text", "")
@@ -103,6 +110,7 @@ def _parse_metrics(tweet_result: dict[str, Any]) -> dict[str, Any]:
         "impressions": impressions,
         "likes": likes,
         "retweets": retweets,
+        "followers": followers,
         "tweet_text": tweet_text,
     }
 

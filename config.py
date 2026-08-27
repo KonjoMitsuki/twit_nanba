@@ -18,7 +18,10 @@ load_dotenv(Path(__file__).parent / ".env")
 NOTION_TOKEN: str = os.getenv("NOTION_TOKEN", "")
 ARTWORKS_DB_ID: str = os.getenv("ARTWORKS_DB_ID", "")
 METRICS_DB_ID: str = os.getenv("METRICS_DB_ID", "")
-USERS_DB_ID: str = os.getenv("USERS_DB_ID", "")
+FANS_DB_PATH: str = os.getenv(
+    "FANS_DB_PATH",
+    str(Path(__file__).parent / "fans.db"),
+)
 
 # =============================================================================
 # Playwright 認証設定
@@ -83,7 +86,6 @@ AW_PROP_STATUS = "ステータス"
 AW_PROP_NEXT_SCHEDULE = "次回予定"
 AW_PROP_NEW_FANS_COUNT = "はじめて反応した人の数"
 AW_PROP_METRICS_REL = "時系列ログ"
-AW_PROP_USERS_REL = "反応ユーザー"
 
 # 時系列メトリクスDB
 MS_PROP_TITLE = "ログ名"
@@ -94,11 +96,7 @@ MS_PROP_IMPRESSIONS = "Impressions"
 MS_PROP_LIKES = "Likes"
 MS_PROP_RETWEETS = "Retweets"
 MS_PROP_NEW_FANS = "New Fans"
-
-# 反応者マスターDB
-UM_PROP_TITLE = "ユーザーID"
-UM_PROP_FIRST_REACTION_AT = "初回反応日時"
-UM_PROP_FIRST_ARTWORK_REL = "初回反応作品"
+MS_PROP_FOLLOWERS = "Followers"
 
 # =============================================================================
 # 新着イラスト自動検知モジュール設定

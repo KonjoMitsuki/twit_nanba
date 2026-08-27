@@ -183,27 +183,6 @@ def update_new_fans_count(page_id: str, count: int) -> None:
     )
 
 
-def add_user_relations(page_id: str, user_page_ids: list[str]) -> None:
-    """反応ユーザーリレーションに新規ユーザーを追加する。"""
-    if not user_page_ids:
-        return
-
-    client = get_client()
-    page = client.request(path=f"pages/{page_id}", method="GET")
-    current_relations = page["properties"][config.AW_PROP_USERS_REL].get("relation", [])
-    existing_ids = {r["id"] for r in current_relations}
-
-    for uid in user_page_ids:
-        if uid not in existing_ids:
-            current_relations.append({"id": uid})
-
-    client.request(
-        path=f"pages/{page_id}",
-        method="PATCH",
-        body={"properties": {config.AW_PROP_USERS_REL: {"relation": current_relations}}},
-    )
-
-
 def add_metrics_relation(page_id: str, metrics_page_id: str) -> None:
     """時系列ログリレーションにスナップショットを追加する。"""
     client = get_client()

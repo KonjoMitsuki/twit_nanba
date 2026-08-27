@@ -25,8 +25,9 @@ import time
 from datetime import datetime, timezone
 
 import config
-from notion_client_wrapper import artworks, metrics_db, users as users_db
+from notion_client_wrapper import artworks, metrics_db
 from processing import scheduler, new_fans
+from storage import fans_db
 from scraper.browser import create_browser_context, random_wait
 from scraper.metrics import fetch_metrics
 from scraper.fans import fetch_likers
@@ -51,7 +52,7 @@ async def process_artwork(
     Args:
         page: Playwright の Page オブジェクト。
         artwork_info: artworks.extract_artwork_info() で取得した作品情報辞書。
-        known_users: 反応者マスターDB の既知ユーザー集合（参照渡しで更新される）。
+        known_users: SQLiteに保存された既知ユーザー集合（参照渡しで更新される）。
 
     Returns:
         set[str]: この作品で新たに検知された新規ユーザーの集合。
@@ -80,8 +81,6 @@ async def process_artwork(
 
     # ─── 2. ユーザー照合（必要な場合のみ） ───
     stage_new_fans: set[str] = set()
-    new_fan_page_ids: list[str] = []
-
     if scheduler.is_fan_collection_stage(current_status):
         logger.info("🔍 ユーザー照合ステージ: いいねモーダルを取得")
 
@@ -94,22 +93,23 @@ async def process_artwork(
 
             if stage_new_fans:
                 now = datetime.now(timezone.utc)
-                new_fan_page_ids = new_fans.register_new_fans(
+                inserted_count = new_fans.register_new_fans(
                     new_fans=stage_new_fans,
-                    artwork_page_id=page_id,
                     reaction_at=now,
+                    tweet_id=url.rstrip("/").split("/")[-1],
+                    db_path=config.FANS_DB_PATH,
                 )
 
                 # known_users を更新（以降の処理で再利用）
                 known_users.update(stage_new_fans)
 
                 # はじめて反応した人の数を累計で更新
-                updated_count = current_new_fans_count + len(stage_new_fans)
+                updated_count = current_new_fans_count + inserted_count
                 artworks.update_new_fans_count(page_id, updated_count)
 
                 logger.info(
                     "🆕 新規反応者 %d 名を登録 (累計: %d)",
-                    len(stage_new_fans),
+                    inserted_count,
                     updated_count,
                 )
         else:
@@ -126,6 +126,7 @@ async def process_artwork(
             likes=metrics["likes"],
             retweets=metrics["retweets"],
             new_fans_count=len(stage_new_fans),
+            followers=metrics.get("followers", 0),
         )
 
         # 作品の時系列ログリレーションにも追加
@@ -209,9 +210,9 @@ async def run(headless: bool = True) -> None:
     # 既知ユーザー集合を事前取得（ファン照合ステージがある場合のみ）
     known_users: set[str] = set()
     if needs_fans:
-        logger.info("反応者マスターDB から既知ユーザーを取得中...")
+        logger.info("SQLiteから既知ユーザーを取得中...")
         try:
-            known_users = users_db.get_all_known_users()
+            known_users = fans_db.get_all_known_users(config.FANS_DB_PATH)
             logger.info("既知ユーザー数: %d", len(known_users))
         except Exception as e:
             logger.warning("既知ユーザー取得失敗（空集合で続行）: %s", e)

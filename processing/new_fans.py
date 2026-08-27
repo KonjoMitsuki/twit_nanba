@@ -12,8 +12,7 @@ import logging
 from datetime import datetime
 from typing import Set
 
-from notion_client_wrapper import users as users_db
-from notion_client_wrapper import artworks as artworks_db
+from storage import fans_db
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ def compute_new_fans(
 
     Args:
         current_likers: 今回の投稿の反応者 @screen_name 集合。
-        known_users: 反応者マスターDB 内の既知ユーザー集合。
+        known_users: SQLite内の既知ユーザー集合。
 
     Returns:
         set[str]: 新規反応者の @screen_name 集合。
@@ -43,48 +42,26 @@ def compute_new_fans(
 
 def register_new_fans(
     new_fans: Set[str],
-    artwork_page_id: str,
     reaction_at: datetime,
-) -> list[str]:
-    """新規反応者を反応者マスターDBに登録し、作品リレーションを更新する。
+    tweet_id: str | None = None,
+    db_path: str = "fans.db",
+) -> int:
+    """新規反応者をローカルSQLiteに一括登録する。
 
     Args:
         new_fans: 新規反応者の @screen_name 集合。
-        artwork_page_id: 初回反応作品の Notion ページ ID。
         reaction_at: 反応検知日時。
+        tweet_id: 初回反応ツイートID。
+        db_path: SQLiteデータベースのパス。
 
     Returns:
-        list[str]: 登録・取得されたユーザーページ ID のリスト。
+        int: SQLiteに実際に追加されたユーザー数。
     """
-    user_page_ids: list[str] = []
-
-    for screen_name in new_fans:
-        try:
-            page_id, is_new = users_db.get_or_create_user(
-                screen_name=screen_name,
-                first_reaction_at=reaction_at,
-                first_artwork_page_id=artwork_page_id,
-            )
-            user_page_ids.append(page_id)
-
-            if is_new:
-                logger.info("新規ユーザー登録: %s", screen_name)
-            else:
-                logger.debug("既存ユーザー: %s", screen_name)
-
-        except Exception as e:
-            logger.warning(
-                "ユーザー登録失敗 (%s): %s", screen_name, e
-            )
-
-    # 作品の反応ユーザーリレーションに追加
-    if user_page_ids:
-        try:
-            artworks_db.add_user_relations(artwork_page_id, user_page_ids)
-            logger.info(
-                "作品リレーション更新: %d 名追加", len(user_page_ids)
-            )
-        except Exception as e:
-            logger.warning("作品リレーション更新失敗: %s", e)
-
-    return user_page_ids
+    inserted_count = fans_db.register_new_fans(
+        new_fans=new_fans,
+        first_seen_at=reaction_at,
+        tweet_id=tweet_id,
+        db_path=db_path,
+    )
+    logger.info("SQLiteに新規ユーザーを登録: %d 名", inserted_count)
+    return inserted_count

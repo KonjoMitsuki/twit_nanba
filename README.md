@@ -9,7 +9,8 @@ X（Twitter）に投稿されたイラストのエンゲージメント（いい
 - **新着イラスト自動検知**: プロフィール画面を15〜30分おきに確認し、画像付き投稿を自動でNotionに登録（手動URL登録不要）
 - **Playwright** による GraphQL レスポンス傍受でエンゲージメント数値を取得
 - **いいねモーダル** から反応者ユーザーを抽出し、差集合演算で新規ファンを判定
-- **Notion 3DB 構成**（作品マスター・時系列メトリクス・反応者マスター）に自動蓄積
+- **Notion 2DB 構成**（作品マスター・時系列メトリクス）に自動蓄積
+- **SQLite (`fans.db`)** で反応者名簿を管理
 - 投稿後 **48時間** を10ステージで自動追跡（5m〜48h）
 - **シャドウバン対策**: プロフィールへのアクセスを15〜30分に1回に制限し、ブラウザセッションを共有して通信を最小化
 
@@ -37,12 +38,11 @@ cp .env.example .env
 | `NOTION_TOKEN` | Notion Integration Token |
 | `ARTWORKS_DB_ID` | 作品マスターDB のデータベースID |
 | `METRICS_DB_ID` | 時系列メトリクスDB のデータベースID |
-| `USERS_DB_ID` | 反応者マスターDB のデータベースID |
 | `X_SCREEN_NAME` | 自分の X スクリーンネーム（`@` なし。新着自動検知に使用） |
 
 ### 3. Notion データベースの作成
 
-Notion に以下の3つのデータベースを手動で作成し、Integration と接続（コネクト）してください。
+Notion に以下の2つのデータベースを手動で作成し、Integration と接続（コネクト）してください。
 
 #### 3.1 作品マスターDB (Art Works)
 
@@ -55,7 +55,6 @@ Notion に以下の3つのデータベースを手動で作成し、Integration 
 | 次回予定 | 日付 |
 | はじめて反応した人の数 | 数値 |
 | 時系列ログ | リレーション → 時系列メトリクスDB |
-| 反応ユーザー | リレーション → 反応者マスターDB |
 
 #### 3.2 時系列メトリクスDB (Metrics Snapshots)
 
@@ -70,13 +69,7 @@ Notion に以下の3つのデータベースを手動で作成し、Integration 
 | Retweets | 数値 |
 | New Fans | 数値 |
 
-#### 3.3 反応者マスターDB (User Master)
-
-| プロパティ名 | 型 |
-|---|---|
-| ユーザーID | タイトル |
-| 初回反応日時 | 日付 |
-| 初回反応作品 | リレーション → 作品マスターDB |
+反応者の名簿と新規判定情報は、プロジェクトルートの `fans.db` に保存されます。
 
 > **💡 データベースIDの取得方法**: Notion でデータベースを開き、URLの `https://www.notion.so/xxxxx?v=yyyyy` の `xxxxx` 部分がデータベースIDです。
 
@@ -170,8 +163,9 @@ twit_nanba/
 │   └── fans.py                 # 反応者一覧取得
 ├── notion_client_wrapper/
 │   ├── artworks.py             # 作品マスターDB
-│   ├── metrics_db.py           # 時系列メトリクスDB
-│   └── users.py                # 反応者マスターDB
+│   └── metrics_db.py           # 時系列メトリクスDB
+├── storage/
+│   └── fans_db.py              # SQLite反応者名簿
 └── processing/
     ├── scheduler.py            # 状態遷移エンジン
     └── new_fans.py             # 新規反応者判定

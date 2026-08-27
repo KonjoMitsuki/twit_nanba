@@ -2,6 +2,7 @@
 .env
 auth_state.json
 .auto_detect_last_check
+fans.db
 
 # Python
 __pycache__/
