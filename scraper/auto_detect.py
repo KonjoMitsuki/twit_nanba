@@ -280,7 +280,7 @@ async def check_new_art_post(
         await page.goto(profile_url, wait_until="domcontentloaded")
         await page.wait_for_selector(
             "article[data-testid='tweet']",
-            timeout=15000,
+            timeout=30000,
         )
     except Exception as e:
         logger.error("プロフィールページの読み込みに失敗: %s", e)
