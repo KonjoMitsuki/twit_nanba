@@ -39,16 +39,19 @@ X_AUTH_STATE_PATH: str = os.getenv(
 #   offset_sec : 投稿日時からの経過秒数
 #   with_fans  : True ならユーザー照合（いいねモーダル取得）を実施
 SCHEDULE_STAGES: list[dict] = [
-    {"name": "5m",  "offset_sec": 300,     "with_fans": False},
-    {"name": "15m", "offset_sec": 900,     "with_fans": False},
-    {"name": "30m", "offset_sec": 1800,    "with_fans": False},
-    {"name": "1h",  "offset_sec": 3600,    "with_fans": True},
-    {"name": "2h",  "offset_sec": 7200,    "with_fans": False},
-    {"name": "3h",  "offset_sec": 10800,   "with_fans": False},
-    {"name": "6h",  "offset_sec": 21600,   "with_fans": True},
-    {"name": "12h", "offset_sec": 43200,   "with_fans": False},
-    {"name": "24h", "offset_sec": 86400,   "with_fans": True},
-    {"name": "48h", "offset_sec": 172800,  "with_fans": True},
+    {"name": "5m",  "offset_sec": 300,  "with_fans": False},
+    {"name": "15m", "offset_sec": 900,  "with_fans": False},
+    {"name": "30m", "offset_sec": 1800, "with_fans": False},
+    {"name": "1h",  "offset_sec": 3600, "with_fans": True},
+    *[
+        {
+            "name": f"{hours}h",
+            "offset_sec": hours * 3600,
+            "with_fans": False,
+        }
+        for hours in range(2, 48)
+    ],
+    {"name": "48h", "offset_sec": 48 * 3600, "with_fans": True},
 ]
 
 # ステージ名のリスト（状態遷移用）

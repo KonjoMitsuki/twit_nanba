@@ -4,7 +4,7 @@ processing/scheduler.py — 状態遷移エンジン
 計測スケジュールに基づき、現在のステージから次のステージへの遷移と
 次回予定日時の算出を行います。
 
-状態遷移: 5m → 15m → 30m → 1h → 2h → 3h → 6h → 12h → 24h → 48h → COMPLETED
+状態遷移: 5m → 15m → 30m → 1h → 2h ... 47h → 48h → COMPLETED
 """
 
 from datetime import datetime, timedelta
