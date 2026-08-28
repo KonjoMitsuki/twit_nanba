@@ -18,9 +18,11 @@ scraper/auto_detect.py — 新着イラスト自動検知モジュール
 
 import logging
 import random
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.async_api import Page
 
@@ -139,6 +141,29 @@ def calculate_initial_stage(post_time_iso: str) -> str:
 # ─── ツイート情報抽出 ─────────────────────────────────────────
 
 
+def normalize_twitter_img_url(url: str | None) -> str | None:
+    """pbs.twimg.com の画像URLをクエリなしの直接リンクに変換する。"""
+    if not url:
+        return url
+
+    parsed_url = urlsplit(url)
+    if parsed_url.netloc.lower() != "pbs.twimg.com" or not parsed_url.path.startswith(
+        "/media/"
+    ):
+        return url
+
+    base_url = url.split("?", 1)[0]
+    if re.search(r"\.[a-zA-Z0-9]{2,5}$", parsed_url.path):
+        return base_url
+
+    query = parse_qs(parsed_url.query)
+    image_format = query.get("format", ["jpg"])[0]
+    if not re.fullmatch(r"[a-zA-Z0-9]+", image_format):
+        image_format = "jpg"
+
+    return f"{base_url}.{image_format}"
+
+
 async def _is_pinned_tweet(tweet_element) -> bool:
     """ツイート要素が固定ツイートかどうかを判定する。
 
@@ -230,7 +255,9 @@ async def _extract_tweet_info(tweet_element) -> dict | None:
         image_url = None
         photo_img = tweet_element.locator("div[data-testid='tweetPhoto'] img").first
         if await photo_img.count() > 0:
-            image_url = await photo_img.get_attribute("src")
+            image_url = normalize_twitter_img_url(
+                await photo_img.get_attribute("src")
+            )
 
         return {
             "tweet_id": tweet_id,
