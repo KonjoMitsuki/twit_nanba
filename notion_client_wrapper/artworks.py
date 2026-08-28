@@ -74,7 +74,8 @@ def create_artwork(
     url: str,
     title: str,
     posted_at: datetime,
-    image_url: str = None,
+    image_urls: list[str] | None = None,
+    tags: list[str] | None = None,
 ) -> str:
     """新規作品をマスターDBに登録する。"""
     client = get_client()
@@ -91,15 +92,20 @@ def create_artwork(
         config.AW_PROP_NEXT_SCHEDULE: {"date": {"start": next_schedule.isoformat()}},
         config.AW_PROP_NEW_FANS_COUNT: {"number": 0},
     }
-    if image_url:
+    if image_urls:
         properties[config.AW_PROP_IMAGE] = {
             "files": [
                 {
-                    "name": "サムネイル",
+                    "name": f"画像{i + 1}",
                     "type": "external",
-                    "external": {"url": image_url},
+                    "external": {"url": url},
                 }
+                for i, url in enumerate(image_urls)
             ]
+        }
+    if tags:
+        properties[config.AW_PROP_TAGS] = {
+            "multi_select": [{"name": tag} for tag in tags]
         }
 
     page = client.request(
@@ -118,7 +124,8 @@ def create_artwork_auto(
     title: str,
     posted_at: datetime,
     initial_stage: str,
-    image_url: str = None,
+    image_urls: list[str] | None = None,
+    tags: list[str] | None = None,
 ) -> str:
     """自動検知用の新規作品登録。"""
     if initial_stage not in config.STAGE_MAP:
@@ -137,15 +144,20 @@ def create_artwork_auto(
         config.AW_PROP_NEXT_SCHEDULE: {"date": {"start": next_schedule.isoformat()}},
         config.AW_PROP_NEW_FANS_COUNT: {"number": 0},
     }
-    if image_url:
+    if image_urls:
         properties[config.AW_PROP_IMAGE] = {
             "files": [
                 {
-                    "name": "サムネイル",
+                    "name": f"画像{i + 1}",
                     "type": "external",
-                    "external": {"url": image_url},
+                    "external": {"url": url},
                 }
+                for i, url in enumerate(image_urls)
             ]
+        }
+    if tags:
+        properties[config.AW_PROP_TAGS] = {
+            "multi_select": [{"name": tag} for tag in tags]
         }
 
     page = client.request(

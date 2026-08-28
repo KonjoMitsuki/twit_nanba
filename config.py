@@ -89,6 +89,7 @@ AW_PROP_STATUS = "ステータス"
 AW_PROP_NEXT_SCHEDULE = "次回予定"
 AW_PROP_NEW_FANS_COUNT = "はじめて反応した人の数"
 AW_PROP_METRICS_REL = "時系列ログ"
+AW_PROP_TAGS = "タグ"
 
 # 時系列メトリクスDB
 MS_PROP_TITLE = "ログ名"

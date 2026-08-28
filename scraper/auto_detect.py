@@ -224,7 +224,7 @@ async def _has_image(tweet_element) -> bool:
 
 
 async def _extract_tweet_info(tweet_element) -> dict | None:
-    """ツイート要素からID・URL・投稿時刻・画像URLを抽出する。
+    """ツイート要素からID・URL・投稿時刻・画像URL・タグを抽出する。
 
     Args:
         tweet_element: Playwright の Locator（article 要素）。
@@ -234,7 +234,8 @@ async def _extract_tweet_info(tweet_element) -> dict | None:
             - tweet_id: ツイート ID
             - tweet_url: ツイートの直リンク URL
             - post_time_iso: 投稿日時（ISO 8601 文字列）
-            - image_url: 画像 URL（存在しない場合は None）
+            - image_urls: 画像 URL のリスト（存在しない場合は空リスト）
+            - tags: ハッシュタグ名のリスト（存在しない場合は空リスト）
             抽出失敗時は None。
     """
     try:
@@ -252,18 +253,29 @@ async def _extract_tweet_info(tweet_element) -> dict | None:
         tweet_id = tweet_url.split("/")[-1]
         post_time_iso = await time_element.get_attribute("datetime")
 
-        image_url = None
-        photo_img = tweet_element.locator("div[data-testid='tweetPhoto'] img").first
-        if await photo_img.count() > 0:
+        image_urls = []
+        photo_imgs = tweet_element.locator("div[data-testid='tweetPhoto'] img")
+        for image_index in range(await photo_imgs.count()):
             image_url = normalize_twitter_img_url(
-                await photo_img.get_attribute("src")
+                await photo_imgs.nth(image_index).get_attribute("src")
             )
+            if image_url:
+                image_urls.append(image_url)
+
+        tweet_text_element = tweet_element.locator(
+            "[data-testid='tweetText']"
+        ).first
+        tweet_text = ""
+        if await tweet_text_element.count() > 0:
+            tweet_text = await tweet_text_element.inner_text()
+        tags = re.findall(r"#([\wぁ-んァ-ヶ一-龯々ー]+)", tweet_text)
 
         return {
             "tweet_id": tweet_id,
             "tweet_url": tweet_url,
             "post_time_iso": post_time_iso,
-            "image_url": image_url,
+            "image_urls": image_urls,
+            "tags": tags,
         }
     except Exception as e:
         logger.error("ツイート情報の抽出に失敗: %s", e)
@@ -348,7 +360,8 @@ async def check_new_art_post(
         tweet_id = tweet_info["tweet_id"]
         tweet_url = tweet_info["tweet_url"]
         post_time_iso = tweet_info["post_time_iso"]
-        image_url = tweet_info.get("image_url")
+        image_urls = tweet_info.get("image_urls", [])
+        tags = tweet_info.get("tags", [])
 
         logger.info(
             "🖼 画像付きツイートを発見: %s (投稿: %s)",
@@ -378,7 +391,8 @@ async def check_new_art_post(
             title=title,
             posted_at=posted_at,
             initial_stage=initial_stage,
-            image_url=image_url,
+            image_urls=image_urls,
+            tags=tags,
         )
 
         logger.info(
