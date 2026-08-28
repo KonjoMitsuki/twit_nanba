@@ -93,13 +93,7 @@ def _parse_metrics(tweet_result: dict[str, Any]) -> dict[str, Any]:
 
     likes = legacy.get("favorite_count", 0)
     retweets = legacy.get("retweet_count", 0)
-    followers = (
-        tweet_result.get("core", {})
-        .get("user_results", {})
-        .get("result", {})
-        .get("legacy", {})
-        .get("followers_count", 0)
-    )
+    followers = _find_followers_count(tweet_result)
 
     # ツイート本文（作品名として利用可能）
     full_text = legacy.get("full_text", "")
@@ -113,6 +107,29 @@ def _parse_metrics(tweet_result: dict[str, Any]) -> dict[str, Any]:
         "followers": followers,
         "tweet_text": tweet_text,
     }
+
+
+def _find_followers_count(value: Any) -> int:
+    """GraphQL レスポンス内の followers_count を取得する。"""
+    if isinstance(value, dict):
+        followers_count = value.get("followers_count")
+        if followers_count is not None:
+            try:
+                return int(followers_count)
+            except (ValueError, TypeError):
+                return 0
+
+        for child in value.values():
+            followers = _find_followers_count(child)
+            if followers:
+                return followers
+    elif isinstance(value, list):
+        for child in value:
+            followers = _find_followers_count(child)
+            if followers:
+                return followers
+
+    return 0
 
 
 async def fetch_metrics(page: Page, tweet_url: str) -> dict[str, Any]:
@@ -154,10 +171,11 @@ async def fetch_metrics(page: Page, tweet_url: str) -> dict[str, Any]:
                 if not metrics_future.done():
                     metrics_future.set_result(metrics)
                     logger.info(
-                        "GraphQL 数値取得成功: imp=%d, likes=%d, rt=%d",
+                        "GraphQL 数値取得成功: imp=%d, likes=%d, rt=%d, followers=%d",
                         metrics["impressions"],
                         metrics["likes"],
                         metrics["retweets"],
+                        metrics["followers"],
                     )
         except Exception as e:
             logger.debug("GraphQL レスポンス解析スキップ: %s", e)
