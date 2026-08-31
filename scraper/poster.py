@@ -48,54 +48,88 @@ def _get_tweet_button_selectors() -> list[str]:
 
 
 async def _find_visible_locator(page: Page, selectors: list[str], timeout_ms: int = 15000):
-    """候補セレクタを順に試し、最初に見つかったロケータを返す。"""
-    last_error = None
-    end_time = __import__("time").time() + (timeout_ms / 1000.0)
+    """候補セレクタを順に試し、最初に見つかった visible なロケータを返す。
 
+    2フェーズ方式:
+      Phase 1: 全候補を count() で高速スキャン（存在チェックのみ）
+      Phase 2: 見つかった候補に対して wait_for(visible) を実行
+      Fallback: どれも即座に見つからない場合、全候補を OR 結合して一発待機
+    """
+    import time as _time
+
+    # Phase 1: 高速スキャン — DOM に存在する候補を探す
     for selector in selectors:
-        locator = page.locator(selector)
+        locator = page.locator(selector).first
         try:
             if await locator.count() > 0:
-                await locator.first.wait_for(state="visible", timeout=max(2000, int((end_time - __import__("time").time()) * 1000)))
-                return locator.first
-        except Exception as exc:  # pragma: no cover - 実際の DOM 依存
-            last_error = exc
+                # Phase 2: 存在する要素が visible になるのを待つ
+                await locator.wait_for(state="visible", timeout=timeout_ms)
+                return locator
+        except Exception:
+            # このセレクタは visible にならなかった → 次の候補へ
+            continue
 
-        if __import__("time").time() >= end_time:
-            break
-
-    if last_error is not None:
-        raise last_error
-    raise TimeoutError(f"候補セレクタが見つかりませんでした: {selectors}")
+    # Fallback: 全候補を OR 結合して一発で待機
+    # Playwright の '>>' や ',' 区切りではなく、Promise.race 的に待つ
+    combined_selector = ", ".join(selectors)
+    locator = page.locator(combined_selector).first
+    try:
+        await locator.wait_for(state="visible", timeout=timeout_ms)
+        return locator
+    except Exception as e:
+        raise TimeoutError(
+            f"候補セレクタが見つかりませんでした "
+            f"(timeout={timeout_ms}ms): {selectors}"
+        ) from e
 
 
 async def _open_compose_page(page: Page) -> None:
-    """compose 画面を開く。ログイン画面やホーム画面が表示されていればフォールバックする。"""
-    candidates = [
+    """compose 画面を開く。ログイン画面やホーム画面が表示されればフォールバックする。"""
+    # まず直接 compose/post を開く
+    try:
+        await page.goto(
+            "https://x.com/compose/post",
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+        # DOM のレンダリングを待つ
+        await random_wait(min_sec=2.0, max_sec=3.0)
+
+        # ログインにリダイレクトされていなければ OK
+        if "/login" not in page.url:
+            return
+    except Exception as e:
+        logger.warning("compose/post への直接遷移に失敗: %s", e)
+
+    # フォールバック: ホーム画面経由
+    try:
+        await page.goto(
+            "https://x.com/home",
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+        await random_wait(min_sec=1.5, max_sec=2.5)
+
+        # ホーム画面から compose リンク/ボタンを探す
+        home_compose = page.locator(
+            'a[href*="/compose/post"], '
+            'button[data-testid="new-tweet-button"], '
+            'button:has-text("投稿")'
+        )
+        if await home_compose.count() > 0:
+            await home_compose.first.click()
+            await random_wait(min_sec=2.0, max_sec=3.0)
+            return
+    except Exception as e:
+        logger.warning("ホーム画面経由のフォールバックに失敗: %s", e)
+
+    # 最終手段: 再度直接遷移
+    await page.goto(
         "https://x.com/compose/post",
-        "https://x.com/home",
-    ]
-
-    for url in candidates:
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await random_wait(min_sec=0.8, max_sec=1.6)
-            if "/login" not in page.url and "/compose/post" in page.url:
-                return
-            if "/home" in page.url:
-                home_compose = page.locator('a[href*="/compose/post"], button[data-testid="new-tweet-button"], button:has-text("投稿")')
-                if await home_compose.count() > 0:
-                    try:
-                        await home_compose.first.click()
-                        await random_wait(min_sec=1.2, max_sec=2.0)
-                        if "/compose/post" in page.url or await page.locator('textarea, [role="textbox"], [contenteditable="true"]').count() > 0:
-                            return
-                    except Exception:
-                        pass
-        except Exception:
-            continue
-
-    await page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=30000)
+        wait_until="domcontentloaded",
+        timeout=30000,
+    )
+    await random_wait(min_sec=2.0, max_sec=3.0)
 
 
 async def _download_images(image_urls: list[str]) -> list[str]:
