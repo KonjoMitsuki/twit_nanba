@@ -26,12 +26,14 @@ from datetime import datetime, timezone
 
 import config
 from notion_client_wrapper import artworks, metrics_db
+from notion_client_wrapper import schedule_queue
 from processing import scheduler, new_fans
 from storage import fans_db
 from scraper.browser import create_browser_context, random_wait
 from scraper.metrics import fetch_metrics
 from scraper.fans import fetch_likers
 from scraper.auto_detect import should_check_now, check_new_art_post
+from scraper.poster import post_tweet, _extract_hashtags
 
 # ロギング設定
 logging.basicConfig(
@@ -176,22 +178,33 @@ async def run(headless: bool = True) -> None:
     """メイン実行フロー。
 
     【フロー概要】
-    0. 新着イラスト自動検知（15〜30分に1回、ブラウザセッション共有）
-    1. 対象作品の取得
-    2. ユーザー照合の事前準備
-    3. ブラウザ起動 & 各作品を処理
+    0. 予約投稿チェック（Notion 予約DBから投稿対象を取得しXへ投稿）
+    1. 新着イラスト自動検知（15〜30分に1回、ブラウザセッション共有）
+    2. 対象作品の取得
+    3. ユーザー照合の事前準備
+    4. ブラウザ起動 & 各作品を処理
     """
-    # ─── 0. 新着チェックが必要か判定 ───
-    need_auto_detect = should_check_now()
+    # ─── 0. 予約投稿の対象を取得 ───
+    scheduled_posts: list[dict] = []
+    try:
+        scheduled_posts = schedule_queue.get_due_scheduled_posts()
+        if scheduled_posts:
+            logger.info("📬 予約投稿対象: %d 件", len(scheduled_posts))
+    except Exception as e:
+        logger.error("予約投稿の取得に失敗: %s", e)
 
-    # ─── 1. 対象作品の取得 ───
+    # ─── 1. 新着チェックが必要か判定 ───
+    need_auto_detect = should_check_now()
+    need_scheduled_posts = bool(scheduled_posts)
+
+    # ─── 2. 対象作品の取得 ───
     try:
         due_pages = artworks.get_due_artworks()
     except Exception as e:
         logger.error("Notion からの作品取得に失敗: %s", e)
         sys.exit(1)
 
-    if not due_pages and not need_auto_detect:
+    if not due_pages and not need_auto_detect and not need_scheduled_posts:
         time.sleep(config.NO_TARGET_WAIT_SEC)
         return
 
@@ -203,7 +216,7 @@ async def run(headless: bool = True) -> None:
     # 作品情報を抽出
     artwork_list = [artworks.extract_artwork_info(p) for p in due_pages]
 
-    # ─── 2. ユーザー照合が必要なステージがあるか確認 ───
+    # ─── 3. ユーザー照合が必要なステージがあるか確認 ───
     needs_fans = any(
         scheduler.is_fan_collection_stage(a["status"])
         for a in artwork_list
@@ -219,8 +232,60 @@ async def run(headless: bool = True) -> None:
         except Exception as e:
             logger.warning("既知ユーザー取得失敗（空集合で続行）: %s", e)
 
-    # ─── 3. ブラウザ起動 & 各作品を処理 ───
+    # ─── 4. ブラウザ起動 & 各作品を処理 ───
     async with create_browser_context(headless=headless) as (context, page):
+
+        # ── 予約投稿の処理 ──
+        if scheduled_posts:
+            for sq_page in scheduled_posts:
+                sq_info = schedule_queue.extract_scheduled_post_info(sq_page)
+                sq_page_id = sq_info["page_id"]
+                sq_title = sq_info["title"]
+                sq_text = sq_info["text"]
+                sq_images = sq_info["image_urls"]
+
+                logger.info(
+                    "📤 予約投稿を実行: %s", sq_title or "(無題)"
+                )
+
+                try:
+                    tweet_url = await post_tweet(
+                        page, sq_text, sq_images
+                    )
+                except Exception as e:
+                    logger.error("投稿処理で例外: %s", e)
+                    tweet_url = None
+
+                if tweet_url:
+                    # 予約DBを完了状態に更新
+                    schedule_queue.mark_as_posted(sq_page_id, tweet_url)
+
+                    # 作品マスターDBへ新規登録（5m 追跡開始）
+                    now = datetime.now(timezone.utc)
+                    hashtags = _extract_hashtags(sq_text)
+
+                    artwork_page_id = artworks.create_artwork_auto(
+                        url=tweet_url,
+                        title=sq_title or f"作品 ({tweet_url.split('/')[-1]})",
+                        posted_at=now,
+                        initial_stage="5m",
+                        image_urls=sq_images if sq_images else None,
+                        tags=hashtags if hashtags else None,
+                    )
+
+                    logger.info(
+                        "🎉 作品マスターDBに登録 → 5m 追跡開始 "
+                        "(Page ID: %s)",
+                        artwork_page_id,
+                    )
+                else:
+                    schedule_queue.mark_as_failed(sq_page_id)
+                    logger.warning(
+                        "⚠️ 予約投稿失敗 → FAILED に更新: %s",
+                        sq_title or sq_page_id,
+                    )
+
+                await random_wait()
 
         # ── 新着イラスト自動検知（ブラウザセッション共有） ──
         # メトリクス取得のためにブラウザを開いた「ついで」に

@@ -18,6 +18,7 @@ load_dotenv(Path(__file__).parent / ".env")
 NOTION_TOKEN: str = os.getenv("NOTION_TOKEN", "")
 ARTWORKS_DB_ID: str = os.getenv("ARTWORKS_DB_ID", "")
 METRICS_DB_ID: str = os.getenv("METRICS_DB_ID", "")
+SCHEDULE_QUEUE_DB_ID: str = os.getenv("SCHEDULE_QUEUE_DB_ID", "")
 FANS_DB_PATH: str = os.getenv(
     "FANS_DB_PATH",
     str(Path(__file__).parent / "fans.db"),
@@ -101,6 +102,19 @@ MS_PROP_LIKES = "Likes"
 MS_PROP_RETWEETS = "Retweets"
 MS_PROP_NEW_FANS = "New Fans"
 MS_PROP_FOLLOWERS = "Followers"
+
+# 予約投稿DB (Schedule Queue)
+SQ_PROP_TITLE = "タイトル"
+SQ_PROP_TEXT = "本文"
+SQ_PROP_ATTACHMENTS = "添付画像"
+SQ_PROP_SCHEDULED_AT = "投稿予約日時"
+SQ_PROP_STATUS = "ステータス"
+SQ_PROP_POSTED_URL = "投稿後URL"
+
+# 予約投稿DBステータス定数
+STATUS_SQ_SCHEDULED = "SCHEDULED"
+STATUS_SQ_POSTED = "POSTED"
+STATUS_SQ_FAILED = "FAILED"
 
 # =============================================================================
 # 新着イラスト自動検知モジュール設定
