@@ -96,21 +96,6 @@ def _parse_metrics(tweet_result: dict[str, Any]) -> dict[str, Any]:
 
     # X の GraphQL 構造は年々変わるため、まず投稿者の明示的パスを優先し、
     # それが取れない場合のみ全探索フォールバックを使う。
-    user_result = (
-        tweet_result.get("core", {})
-        .get("user_results", {})
-        .get("result", {})
-    )
-    if user_result:
-        logger.debug(
-            "DEBUG user_result keys: %s",
-            list(user_result.keys()),
-        )
-        legacy_user = user_result.get("legacy", {})
-        logger.debug(
-            "DEBUG user legacy keys: %s",
-            list(legacy_user.keys()),
-        )
 
     followers = _extract_user_followers_count(tweet_result)
 
@@ -137,13 +122,50 @@ def _extract_user_followers_count(tweet_result: dict[str, Any]) -> int:
     """
     candidates: list[Any] = []
 
-    core_user_result = (
-        tweet_result.get("core", {})
-        .get("user_results", {})
-        .get("result")
+    # --- デバッグ: tweet_result のトップレベルキーを出力 ---
+    logger.info(
+        "🔎 [followers debug] tweet_result top-level keys: %s",
+        list(tweet_result.keys()),
     )
-    if core_user_result is not None:
-        candidates.append(core_user_result)
+
+    core = tweet_result.get("core")
+    if core is not None:
+        logger.info(
+            "🔎 [followers debug] core keys: %s",
+            list(core.keys()) if isinstance(core, dict) else type(core).__name__,
+        )
+        user_results = core.get("user_results", {}) if isinstance(core, dict) else {}
+        logger.info(
+            "🔎 [followers debug] core.user_results keys: %s",
+            list(user_results.keys()) if isinstance(user_results, dict) else type(user_results).__name__,
+        )
+        core_user_result = user_results.get("result") if isinstance(user_results, dict) else None
+        if core_user_result is not None:
+            logger.info(
+                "🔎 [followers debug] core.user_results.result keys: %s",
+                list(core_user_result.keys()) if isinstance(core_user_result, dict) else type(core_user_result).__name__,
+            )
+            if isinstance(core_user_result, dict):
+                legacy_user = core_user_result.get("legacy")
+                if isinstance(legacy_user, dict):
+                    logger.info(
+                        "🔎 [followers debug] core...legacy keys: %s",
+                        list(legacy_user.keys()),
+                    )
+                    logger.info(
+                        "🔎 [followers debug] core...legacy.followers_count = %r",
+                        legacy_user.get("followers_count"),
+                    )
+                else:
+                    logger.info(
+                        "🔎 [followers debug] core...result.legacy is %s (not dict)",
+                        type(legacy_user).__name__ if legacy_user is not None else "None",
+                    )
+            candidates.append(core_user_result)
+        else:
+            logger.info("🔎 [followers debug] core.user_results.result is None")
+    else:
+        logger.info("🔎 [followers debug] tweet_result has no 'core' key")
 
     user_results = tweet_result.get("user_results")
     if isinstance(user_results, dict):
@@ -154,14 +176,22 @@ def _extract_user_followers_count(tweet_result: dict[str, Any]) -> int:
         candidates.append(user.get("result"))
         candidates.append(user)
 
-    for candidate in candidates:
+    for i, candidate in enumerate(candidates):
         if not isinstance(candidate, dict):
+            logger.debug(
+                "🔎 [followers debug] candidate[%d] is %s, skipping",
+                i, type(candidate).__name__,
+            )
             continue
 
         legacy = candidate.get("legacy")
         if isinstance(legacy, dict):
             followers_count = legacy.get("followers_count")
             if followers_count is not None:
+                logger.info(
+                    "🔎 [followers debug] candidate[%d].legacy.followers_count = %r → returning",
+                    i, followers_count,
+                )
                 try:
                     return int(followers_count)
                 except (ValueError, TypeError):
@@ -169,12 +199,24 @@ def _extract_user_followers_count(tweet_result: dict[str, Any]) -> int:
 
         followers_count = candidate.get("followers_count")
         if followers_count is not None:
+            logger.info(
+                "🔎 [followers debug] candidate[%d].followers_count = %r → returning",
+                i, followers_count,
+            )
             try:
                 return int(followers_count)
             except (ValueError, TypeError):
                 return 0
 
-    return _find_followers_count(tweet_result)
+    logger.info(
+        "🔎 [followers debug] 明示パスで見つからず → 再帰フォールバック開始"
+    )
+    result = _find_followers_count(tweet_result)
+    logger.info(
+        "🔎 [followers debug] 再帰フォールバック結果: %d",
+        result,
+    )
+    return result
 
 
 def _find_followers_count(value: Any) -> int:

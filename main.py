@@ -41,6 +41,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
+# httpx (Notion SDK 内部) の成功ログを抑制 — 失敗時のみ表示
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 async def process_artwork(
     page,
@@ -177,10 +181,6 @@ async def run(headless: bool = True) -> None:
     2. ユーザー照合の事前準備
     3. ブラウザ起動 & 各作品を処理
     """
-    logger.info("=" * 60)
-    logger.info("X Art Analytics System 実行開始")
-    logger.info("=" * 60)
-
     # ─── 0. 新着チェックが必要か判定 ───
     need_auto_detect = should_check_now()
 
@@ -192,10 +192,12 @@ async def run(headless: bool = True) -> None:
         sys.exit(1)
 
     if not due_pages and not need_auto_detect:
-        logger.info("対象作品なし & 新着チェック不要 — 無負荷終了")
         time.sleep(config.NO_TARGET_WAIT_SEC)
         return
 
+    logger.info("=" * 60)
+    logger.info("X Art Analytics System 実行開始")
+    logger.info("=" * 60)
     logger.info("対象作品数: %d", len(due_pages))
 
     # 作品情報を抽出
