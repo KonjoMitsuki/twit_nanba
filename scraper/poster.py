@@ -247,18 +247,8 @@ async def post_tweet(
 
         # ─── 4. 画像を添付 ───
         if temp_paths:
-            file_input = None
-            for selector in ['input[data-testid="fileInput"]', 'input[type="file"]']:
-                candidate = page.locator(selector)
-                if await candidate.count() > 0:
-                    file_input = candidate
-                    break
             attached = False
 
-            if file_input is None:
-                logger.warning("画像ファイル入力要素が見つかりませんでした")
-            else:
-                await file_input.set_input_files(temp_paths)
             # 方式A: メディアボタンをクリック → file_chooser で受け取る
             media_button_selectors = [
                 '[data-testid="fileInput"]',
@@ -288,8 +278,6 @@ async def post_tweet(
                 except Exception:
                     continue
 
-                # 添付完了を待機
-                attachments = page.locator('div[data-testid="attachments"]')
             # 方式B: 隠し <input type="file"> に直接セット（フォールバック）
             if not attached:
                 for selector in [
@@ -317,14 +305,10 @@ async def post_tweet(
                     'div[data-testid="attachments"]'
                 )
                 try:
-                    await attachments.wait_for(state="visible", timeout=30000)
                     await attachments.wait_for(
                         state="visible", timeout=15000,
                     )
                 except Exception:
-                    logger.warning("添付画像の完了待機に失敗しましたが続行します")
-
-                logger.info("画像添付完了 (%d 枚)", len(temp_paths))
                     logger.debug(
                         "添付画像のUI表示待機がタイムアウトしましたが続行します"
                     )
