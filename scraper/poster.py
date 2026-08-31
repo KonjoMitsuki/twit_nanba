@@ -19,6 +19,46 @@ from scraper.browser import random_wait
 logger = logging.getLogger("poster")
 
 
+def _get_compose_input_selectors() -> list[str]:
+    """X の投稿画面で使われ得るテキスト入力セレクタ候補を返す。"""
+    return [
+        'div[data-testid="tweetTextarea_0"]',
+        'div[data-testid="tweetTextarea"]',
+        '[data-testid="tweetTextarea_0"]',
+        '[data-testid="tweetTextarea"]',
+        'div[role="textbox"]',
+        'textarea',
+        'div[contenteditable="true"]',
+        'div[contenteditable="plaintext-only"]',
+    ]
+
+
+def _get_tweet_button_selectors() -> list[str]:
+    """投稿ボタン候補を返す。"""
+    return [
+        'button[data-testid="tweetButton"]',
+        'button[data-testid="postButton"]',
+        'button[data-testid="tweetButtonInline"]',
+        'button:has-text("投稿")',
+        'button:has-text("Post")',
+    ]
+
+
+async def _find_visible_locator(page: Page, selectors: list[str], timeout_ms: int = 15000):
+    """候補セレクタを順に試し、最初に見つかったロケータを返す。"""
+    last_error = None
+    for selector in selectors:
+        locator = page.locator(selector)
+        try:
+            await locator.wait_for(state="visible", timeout=timeout_ms)
+            return locator
+        except Exception as exc:  # pragma: no cover - 実際の DOM 依存
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    raise TimeoutError(f"候補セレクタが見つかりませんでした: {selectors}")
+
+
 async def _download_images(image_urls: list[str]) -> list[str]:
     """画像URLリストをダウンロードし、一時ファイルパスのリストを返す。
 
@@ -116,9 +156,8 @@ async def post_tweet(
             wait_until="domcontentloaded",
         )
 
-        # テキストエリアの表示を待機
-        textarea = page.locator('div[data-testid="tweetTextarea_0"]')
-        await textarea.wait_for(state="visible", timeout=15000)
+        # テキストエリアの表示を待機（固定データテストIDに依存しないよう複数候補を試す）
+        textarea = await _find_visible_locator(page, _get_compose_input_selectors(), timeout_ms=15000)
         await random_wait(min_sec=0.5, max_sec=1.5)
 
         # ─── 3. 本文を入力（改行を維持） ───
@@ -138,40 +177,61 @@ async def post_tweet(
 
         # ─── 4. 画像を添付 ───
         if temp_paths:
-            file_input = page.locator('input[data-testid="fileInput"]')
-            await file_input.set_input_files(temp_paths)
+            file_input = None
+            for selector in ['input[data-testid="fileInput"]', 'input[type="file"]']:
+                candidate = page.locator(selector)
+                if await candidate.count() > 0:
+                    file_input = candidate
+                    break
 
-            # 添付完了を待機
-            attachments = page.locator('div[data-testid="attachments"]')
-            await attachments.wait_for(state="visible", timeout=30000)
+            if file_input is None:
+                logger.warning("画像ファイル入力要素が見つかりませんでした")
+            else:
+                await file_input.set_input_files(temp_paths)
 
-            logger.info("画像添付完了 (%d 枚)", len(temp_paths))
-            await random_wait(min_sec=0.5, max_sec=1.5)
+                # 添付完了を待機
+                attachments = page.locator('div[data-testid="attachments"]')
+                try:
+                    await attachments.wait_for(state="visible", timeout=30000)
+                except Exception:
+                    logger.warning("添付画像の完了待機に失敗しましたが続行します")
+
+                logger.info("画像添付完了 (%d 枚)", len(temp_paths))
+                await random_wait(min_sec=0.5, max_sec=1.5)
 
         # ─── 5. 投稿ボタンをクリック ───
-        tweet_button = page.locator('button[data-testid="tweetButton"]')
-        await tweet_button.wait_for(state="visible", timeout=10000)
+        tweet_button = await _find_visible_locator(
+            page,
+            _get_tweet_button_selectors(),
+            timeout_ms=10000,
+        )
 
-        # ナビゲーション待機を設定してからクリック
-        async with page.expect_navigation(
-            url=re.compile(r"/status/\d+"),
-            timeout=30000,
-            wait_until="domcontentloaded",
-        ) as nav_info:
-            await tweet_button.click()
+        tweet_url = None
+        try:
+            async with page.expect_navigation(
+                url=re.compile(r"/status/\d+"),
+                timeout=30000,
+                wait_until="domcontentloaded",
+            ) as nav_info:
+                await tweet_button.click()
+            await nav_info.value
+            tweet_url = page.url
+        except Exception as e:
+            logger.warning(
+                "投稿後の遷移待機がタイムアウトしました。URL確認を続行: %s",
+                e,
+            )
+            tweet_url = page.url
 
         # ─── 6. ツイートURLを取得 ───
-        response = await nav_info.value
-        tweet_url = page.url
-
         if "/status/" in tweet_url:
-            # クエリパラメータを除去
             tweet_url = tweet_url.split("?")[0]
             logger.info("✅ 投稿成功: %s", tweet_url)
             return tweet_url
 
         logger.warning(
-            "投稿後のURLにstatus/が含まれていません: %s", tweet_url
+            "投稿後のURLにstatus/が含まれていません: %s",
+            page.url,
         )
         return None
 

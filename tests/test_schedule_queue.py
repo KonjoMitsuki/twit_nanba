@@ -1,6 +1,6 @@
 import config
 from notion_client_wrapper import schedule_queue
-from scraper.poster import _extract_hashtags
+from scraper.poster import _extract_hashtags, _get_compose_input_selectors
 
 
 def test_extract_hashtags_from_text():
@@ -44,3 +44,10 @@ def test_extract_scheduled_post_info_extracts_title_text_and_images():
 def test_get_due_scheduled_posts_returns_empty_when_db_not_configured(monkeypatch):
     monkeypatch.setattr(config, "SCHEDULE_QUEUE_DB_ID", "")
     assert schedule_queue.get_due_scheduled_posts() == []
+
+
+def test_compose_input_selectors_include_fallbacks():
+    selectors = _get_compose_input_selectors()
+    assert "div[data-testid=\"tweetTextarea_0\"]" in selectors
+    assert any("role=\"textbox\"" in selector for selector in selectors)
+    assert any("textarea" in selector for selector in selectors)
