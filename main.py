@@ -260,24 +260,34 @@ async def run(headless: bool = True) -> None:
                     # 予約DBを完了状態に更新
                     schedule_queue.mark_as_posted(sq_page_id, tweet_url)
 
-                    # 作品マスターDBへ新規登録（5m 追跡開始）
-                    now = datetime.now(timezone.utc)
-                    hashtags = _extract_hashtags(sq_text)
+                    # 追跡対象アカウントの投稿のみ作品マスターDBに登録
+                    if config.X_SCREEN_NAME and (
+                        f"/{config.X_SCREEN_NAME}/" in tweet_url
+                        or tweet_url.endswith(f"/{config.X_SCREEN_NAME}")
+                    ):
+                        now = datetime.now(timezone.utc)
+                        hashtags = _extract_hashtags(sq_text)
 
-                    artwork_page_id = artworks.create_artwork_auto(
-                        url=tweet_url,
-                        title=sq_title or f"作品 ({tweet_url.split('/')[-1]})",
-                        posted_at=now,
-                        initial_stage="5m",
-                        image_urls=sq_images if sq_images else None,
-                        tags=hashtags if hashtags else None,
-                    )
+                        artwork_page_id = artworks.create_artwork_auto(
+                            url=tweet_url,
+                            title=sq_title or f"作品 ({tweet_url.split('/')[-1]})",
+                            posted_at=now,
+                            initial_stage="5m",
+                            image_urls=sq_images if sq_images else None,
+                            tags=hashtags if hashtags else None,
+                        )
 
-                    logger.info(
-                        "🎉 作品マスターDBに登録 → 5m 追跡開始 "
-                        "(Page ID: %s)",
-                        artwork_page_id,
-                    )
+                        logger.info(
+                            "🎉 作品マスターDBに登録 → 5m 追跡開始 "
+                            "(Page ID: %s)",
+                            artwork_page_id,
+                        )
+                    else:
+                        logger.info(
+                            "✅ 投稿完了 (追跡対象外アカウント — "
+                            "作品マスターDB登録スキップ): %s",
+                            tweet_url,
+                        )
                 else:
                     schedule_queue.mark_as_failed(sq_page_id)
                     logger.warning(

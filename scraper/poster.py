@@ -325,52 +325,93 @@ async def post_tweet(
             timeout_ms=10000,
         )
 
-        tweet_url = None
+        await tweet_button.click()
+        logger.info("投稿ボタンをクリックしました")
+
+        # compose 画面が閉じる（URLが /compose/post から変わる）のを待つ
         try:
-            async with page.expect_navigation(
-                url=re.compile(r"/status/\d+"),
+            await page.wait_for_url(
+                lambda url: "/compose/post" not in url,
                 timeout=30000,
-                wait_until="domcontentloaded",
-            ) as nav_info:
-                await tweet_button.click()
-            await nav_info.value
-            tweet_url = page.url
-        except Exception as e:
-            logger.warning(
-                "投稿後の遷移待機がタイムアウトしました。プロフィール画面からURLを拾ってみます: %s",
-                e,
             )
-            try:
-                await page.goto("https://x.com/" + ("@" + page.url.split("/")[-1] if page.url.split("/")[-1] and not page.url.endswith("/home") else ""), wait_until="domcontentloaded", timeout=30000)
-            except Exception:
-                pass
-            tweet_url = page.url
+        except Exception:
+            pass
+
+        await random_wait(min_sec=2.0, max_sec=3.0)
 
         # ─── 6. ツイートURLを取得 ───
-        if "/status/" in tweet_url:
-            tweet_url = tweet_url.split("?")[0]
+        tweet_url = None
+
+        # 6a. 直接 /status/ ページに遷移した場合（稀だが対応）
+        if "/status/" in page.url:
+            tweet_url = page.url.split("?")[0]
             logger.info("✅ 投稿成功: %s", tweet_url)
             return tweet_url
 
-        # 直近の投稿URLをプロフィール画面から拾う
-        for selector in [
-            "a[href*='/status/']",
-            "a[href*='status/']",
-            "article a[href*='/status/']",
-        ]:
-            try:
-                first_link = page.locator(selector).first
-                if await first_link.count() > 0:
-                    href = await first_link.get_attribute("href")
-                    if href and "/status/" in href:
-                        tweet_url = "https://x.com" + href.split("?", 1)[0]
-                        logger.info("✅ 投稿成功 (プロフィールから取得): %s", tweet_url)
-                        return tweet_url
-            except Exception:
-                continue
+        # 6b. トースト通知内のリンクから取得
+        #     X は投稿後 "ポストを送信しました [表示]" のトーストを表示する
+        try:
+            toast_link = page.locator(
+                '[data-testid="toast"] a[href*="/status/"]'
+            )
+            await toast_link.wait_for(state="visible", timeout=10000)
+            href = await toast_link.get_attribute("href")
+            if href and "/status/" in href:
+                if href.startswith("/"):
+                    tweet_url = "https://x.com" + href.split("?")[0]
+                else:
+                    tweet_url = href.split("?")[0]
+                logger.info("✅ 投稿成功 (トーストから取得): %s", tweet_url)
+                return tweet_url
+        except Exception:
+            logger.debug("トースト通知からURLを取得できませんでした")
+
+        # 6c. 自プロフィールの最新ツイートから取得
+        try:
+            # ナビバーのプロフィールリンクから自分のスクリーンネームを取得
+            profile_link = page.locator(
+                'a[data-testid="AppTabBar_Profile_Link"]'
+            )
+            if await profile_link.count() > 0:
+                profile_href = await profile_link.get_attribute("href")
+                if profile_href:
+                    profile_url = (
+                        "https://x.com" + profile_href
+                        if profile_href.startswith("/")
+                        else profile_href
+                    )
+                    await page.goto(
+                        profile_url,
+                        wait_until="domcontentloaded",
+                        timeout=15000,
+                    )
+                    await page.wait_for_selector(
+                        "article[data-testid='tweet']",
+                        timeout=15000,
+                    )
+                    await random_wait(min_sec=1.0, max_sec=2.0)
+
+                    # 最新ツイートの time 要素の親 <a> からURLを取得
+                    first_tweet = page.locator(
+                        "article[data-testid='tweet']"
+                    ).first
+                    time_el = first_tweet.locator("time").first
+                    if await time_el.count() > 0:
+                        href = await time_el.evaluate(
+                            "el => el.closest('a')?.href"
+                        )
+                        if href and "/status/" in href:
+                            tweet_url = href.split("?")[0]
+                            logger.info(
+                                "✅ 投稿成功 (プロフィールから取得): %s",
+                                tweet_url,
+                            )
+                            return tweet_url
+        except Exception as e:
+            logger.debug("プロフィールからURLを取得できませんでした: %s", e)
 
         logger.warning(
-            "投稿後のURLにstatus/が含まれていません: %s",
+            "投稿は送信されましたがURLを取得できませんでした (現在URL: %s)",
             page.url,
         )
         return None
