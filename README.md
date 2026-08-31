@@ -67,6 +67,7 @@ Notion に以下の2つのデータベースを手動で作成し、Integration 
 | Impressions | 数値 |
 | Likes | 数値 |
 | Retweets | 数値 |
+| Followers | 数値 |
 | New Fans | 数値 |
 
 反応者の名簿と新規判定情報は、プロジェクトルートの `fans.db` に保存されます。

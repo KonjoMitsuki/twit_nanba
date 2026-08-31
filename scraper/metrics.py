@@ -93,7 +93,26 @@ def _parse_metrics(tweet_result: dict[str, Any]) -> dict[str, Any]:
 
     likes = legacy.get("favorite_count", 0)
     retweets = legacy.get("retweet_count", 0)
-    followers = _find_followers_count(tweet_result)
+
+    # X の GraphQL 構造は年々変わるため、まず投稿者の明示的パスを優先し、
+    # それが取れない場合のみ全探索フォールバックを使う。
+    user_result = (
+        tweet_result.get("core", {})
+        .get("user_results", {})
+        .get("result", {})
+    )
+    if user_result:
+        logger.debug(
+            "DEBUG user_result keys: %s",
+            list(user_result.keys()),
+        )
+        legacy_user = user_result.get("legacy", {})
+        logger.debug(
+            "DEBUG user legacy keys: %s",
+            list(legacy_user.keys()),
+        )
+
+    followers = _extract_user_followers_count(tweet_result)
 
     # ツイート本文（作品名として利用可能）
     full_text = legacy.get("full_text", "")
@@ -107,6 +126,55 @@ def _parse_metrics(tweet_result: dict[str, Any]) -> dict[str, Any]:
         "followers": followers,
         "tweet_text": tweet_text,
     }
+
+
+def _extract_user_followers_count(tweet_result: dict[str, Any]) -> int:
+    """投稿者ユーザーオブジェクトから followers_count を優先取得する。
+
+    X の GraphQL はユーザー情報が `core.user_results.result.legacy` に存在する
+    ことが多く、こうした明示的なパスを優先した方が再帰探索の誤検知より
+    安定する。見つからない場合のみ全探索フォールバックを使う。
+    """
+    candidates: list[Any] = []
+
+    core_user_result = (
+        tweet_result.get("core", {})
+        .get("user_results", {})
+        .get("result")
+    )
+    if core_user_result is not None:
+        candidates.append(core_user_result)
+
+    user_results = tweet_result.get("user_results")
+    if isinstance(user_results, dict):
+        candidates.append(user_results.get("result"))
+
+    user = tweet_result.get("user")
+    if isinstance(user, dict):
+        candidates.append(user.get("result"))
+        candidates.append(user)
+
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+
+        legacy = candidate.get("legacy")
+        if isinstance(legacy, dict):
+            followers_count = legacy.get("followers_count")
+            if followers_count is not None:
+                try:
+                    return int(followers_count)
+                except (ValueError, TypeError):
+                    return 0
+
+        followers_count = candidate.get("followers_count")
+        if followers_count is not None:
+            try:
+                return int(followers_count)
+            except (ValueError, TypeError):
+                return 0
+
+    return _find_followers_count(tweet_result)
 
 
 def _find_followers_count(value: Any) -> int:
