@@ -30,6 +30,8 @@ def _get_compose_input_selectors() -> list[str]:
         'textarea',
         'div[contenteditable="true"]',
         'div[contenteditable="plaintext-only"]',
+        'article[role="textbox"]',
+        '[role="textbox"]',
     ]
 
 
@@ -39,6 +41,7 @@ def _get_tweet_button_selectors() -> list[str]:
         'button[data-testid="tweetButton"]',
         'button[data-testid="postButton"]',
         'button[data-testid="tweetButtonInline"]',
+        'button[data-testid="new-tweet-button"]',
         'button:has-text("投稿")',
         'button:has-text("Post")',
     ]
@@ -47,16 +50,52 @@ def _get_tweet_button_selectors() -> list[str]:
 async def _find_visible_locator(page: Page, selectors: list[str], timeout_ms: int = 15000):
     """候補セレクタを順に試し、最初に見つかったロケータを返す。"""
     last_error = None
+    end_time = __import__("time").time() + (timeout_ms / 1000.0)
+
     for selector in selectors:
         locator = page.locator(selector)
         try:
-            await locator.wait_for(state="visible", timeout=timeout_ms)
-            return locator
+            if await locator.count() > 0:
+                await locator.first.wait_for(state="visible", timeout=max(2000, int((end_time - __import__("time").time()) * 1000)))
+                return locator.first
         except Exception as exc:  # pragma: no cover - 実際の DOM 依存
             last_error = exc
+
+        if __import__("time").time() >= end_time:
+            break
+
     if last_error is not None:
         raise last_error
     raise TimeoutError(f"候補セレクタが見つかりませんでした: {selectors}")
+
+
+async def _open_compose_page(page: Page) -> None:
+    """compose 画面を開く。ログイン画面やホーム画面が表示されていればフォールバックする。"""
+    candidates = [
+        "https://x.com/compose/post",
+        "https://x.com/home",
+    ]
+
+    for url in candidates:
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await random_wait(min_sec=0.8, max_sec=1.6)
+            if "/login" not in page.url and "/compose/post" in page.url:
+                return
+            if "/home" in page.url:
+                home_compose = page.locator('a[href*="/compose/post"], button[data-testid="new-tweet-button"], button:has-text("投稿")')
+                if await home_compose.count() > 0:
+                    try:
+                        await home_compose.first.click()
+                        await random_wait(min_sec=1.2, max_sec=2.0)
+                        if "/compose/post" in page.url or await page.locator('textarea, [role="textbox"], [contenteditable="true"]').count() > 0:
+                            return
+                    except Exception:
+                        pass
+        except Exception:
+            continue
+
+    await page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=30000)
 
 
 async def _download_images(image_urls: list[str]) -> list[str]:
@@ -151,10 +190,7 @@ async def post_tweet(
 
         # ─── 2. ツイート作成画面を開く ───
         logger.info("📝 ツイート作成画面を表示中...")
-        await page.goto(
-            "https://x.com/compose/post",
-            wait_until="domcontentloaded",
-        )
+        await _open_compose_page(page)
 
         # テキストエリアの表示を待機（固定データテストIDに依存しないよう複数候補を試す）
         textarea = await _find_visible_locator(page, _get_compose_input_selectors(), timeout_ms=15000)
@@ -218,9 +254,13 @@ async def post_tweet(
             tweet_url = page.url
         except Exception as e:
             logger.warning(
-                "投稿後の遷移待機がタイムアウトしました。URL確認を続行: %s",
+                "投稿後の遷移待機がタイムアウトしました。プロフィール画面からURLを拾ってみます: %s",
                 e,
             )
+            try:
+                await page.goto("https://x.com/" + ("@" + page.url.split("/")[-1] if page.url.split("/")[-1] and not page.url.endswith("/home") else ""), wait_until="domcontentloaded", timeout=30000)
+            except Exception:
+                pass
             tweet_url = page.url
 
         # ─── 6. ツイートURLを取得 ───
@@ -228,6 +268,23 @@ async def post_tweet(
             tweet_url = tweet_url.split("?")[0]
             logger.info("✅ 投稿成功: %s", tweet_url)
             return tweet_url
+
+        # 直近の投稿URLをプロフィール画面から拾う
+        for selector in [
+            "a[href*='/status/']",
+            "a[href*='status/']",
+            "article a[href*='/status/']",
+        ]:
+            try:
+                first_link = page.locator(selector).first
+                if await first_link.count() > 0:
+                    href = await first_link.get_attribute("href")
+                    if href and "/status/" in href:
+                        tweet_url = "https://x.com" + href.split("?", 1)[0]
+                        logger.info("✅ 投稿成功 (プロフィールから取得): %s", tweet_url)
+                        return tweet_url
+            except Exception:
+                continue
 
         logger.warning(
             "投稿後のURLにstatus/が含まれていません: %s",
