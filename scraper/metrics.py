@@ -114,130 +114,111 @@ def _parse_metrics(tweet_result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _extract_user_followers_count(tweet_result: dict[str, Any]) -> int:
-    """投稿者ユーザーオブジェクトから followers_count を優先取得する。
+    """投稿者ユーザーオブジェクトから followers_count を取得する。
 
-    X の GraphQL はユーザー情報が `core.user_results.result.legacy` に存在する
-    ことが多く、こうした明示的なパスを優先した方が再帰探索の誤検知より
-    安定する。見つからない場合のみ全探索フォールバックを使う。
+    X の GraphQL 構造変更に対応:
+      - 旧: core.user_results.result.legacy.followers_count
+      - 新: core.user_results.result.relationship_counts.followers
+            (キー名は followers / followers_count 等を試行)
+    見つからない場合のみ全探索フォールバックを使う。
     """
-    candidates: list[Any] = []
+    candidates: list[dict[str, Any]] = []
 
-    # --- デバッグ: tweet_result のトップレベルキーを出力 ---
-    logger.info(
-        "🔎 [followers debug] tweet_result top-level keys: %s",
-        list(tweet_result.keys()),
+    # パス1: core.user_results.result (最も一般的)
+    core_user_result = (
+        tweet_result.get("core", {})
+        .get("user_results", {})
+        .get("result")
     )
+    if isinstance(core_user_result, dict):
+        candidates.append(core_user_result)
 
-    core = tweet_result.get("core")
-    if core is not None:
-        logger.info(
-            "🔎 [followers debug] core keys: %s",
-            list(core.keys()) if isinstance(core, dict) else type(core).__name__,
-        )
-        user_results = core.get("user_results", {}) if isinstance(core, dict) else {}
-        logger.info(
-            "🔎 [followers debug] core.user_results keys: %s",
-            list(user_results.keys()) if isinstance(user_results, dict) else type(user_results).__name__,
-        )
-        core_user_result = user_results.get("result") if isinstance(user_results, dict) else None
-        if core_user_result is not None:
-            logger.info(
-                "🔎 [followers debug] core.user_results.result keys: %s",
-                list(core_user_result.keys()) if isinstance(core_user_result, dict) else type(core_user_result).__name__,
-            )
-            if isinstance(core_user_result, dict):
-                legacy_user = core_user_result.get("legacy")
-                if isinstance(legacy_user, dict):
-                    logger.info(
-                        "🔎 [followers debug] core...legacy keys: %s",
-                        list(legacy_user.keys()),
-                    )
-                    logger.info(
-                        "🔎 [followers debug] core...legacy.followers_count = %r",
-                        legacy_user.get("followers_count"),
-                    )
-                else:
-                    logger.info(
-                        "🔎 [followers debug] core...result.legacy is %s (not dict)",
-                        type(legacy_user).__name__ if legacy_user is not None else "None",
-                    )
-            candidates.append(core_user_result)
-        else:
-            logger.info("🔎 [followers debug] core.user_results.result is None")
-    else:
-        logger.info("🔎 [followers debug] tweet_result has no 'core' key")
-
+    # パス2: tweet_result.user_results.result
     user_results = tweet_result.get("user_results")
     if isinstance(user_results, dict):
-        candidates.append(user_results.get("result"))
+        r = user_results.get("result")
+        if isinstance(r, dict):
+            candidates.append(r)
 
+    # パス3: tweet_result.user / tweet_result.user.result
     user = tweet_result.get("user")
     if isinstance(user, dict):
-        candidates.append(user.get("result"))
+        r = user.get("result")
+        if isinstance(r, dict):
+            candidates.append(r)
         candidates.append(user)
 
-    for i, candidate in enumerate(candidates):
-        if not isinstance(candidate, dict):
-            logger.debug(
-                "🔎 [followers debug] candidate[%d] is %s, skipping",
-                i, type(candidate).__name__,
-            )
-            continue
-
+    for candidate in candidates:
+        # --- 旧パス: legacy.followers_count ---
         legacy = candidate.get("legacy")
         if isinstance(legacy, dict):
-            followers_count = legacy.get("followers_count")
-            if followers_count is not None:
-                logger.info(
-                    "🔎 [followers debug] candidate[%d].legacy.followers_count = %r → returning",
-                    i, followers_count,
-                )
+            fc = legacy.get("followers_count")
+            if fc is not None:
                 try:
-                    return int(followers_count)
+                    return int(fc)
                 except (ValueError, TypeError):
                     return 0
 
-        followers_count = candidate.get("followers_count")
-        if followers_count is not None:
-            logger.info(
-                "🔎 [followers debug] candidate[%d].followers_count = %r → returning",
-                i, followers_count,
+        # --- 新パス: relationship_counts ---
+        rel_counts = candidate.get("relationship_counts")
+        if isinstance(rel_counts, dict):
+            # キー名は followers / followers_count / follower_count 等を試行
+            for key in ("followers", "followers_count", "follower_count"):
+                fc = rel_counts.get(key)
+                if fc is not None:
+                    try:
+                        return int(fc)
+                    except (ValueError, TypeError):
+                        continue
+            # どのキーにも見つからなかった場合はダンプして調査
+            logger.warning(
+                "🔎 relationship_counts にフォロワー数キーが見つかりません: %s",
+                rel_counts,
             )
+
+        # --- 直接 followers_count がある場合 ---
+        fc = candidate.get("followers_count")
+        if fc is not None:
             try:
-                return int(followers_count)
+                return int(fc)
             except (ValueError, TypeError):
                 return 0
 
-    logger.info(
-        "🔎 [followers debug] 明示パスで見つからず → 再帰フォールバック開始"
-    )
-    result = _find_followers_count(tweet_result)
-    logger.info(
-        "🔎 [followers debug] 再帰フォールバック結果: %d",
-        result,
-    )
-    return result
+    # 全探索フォールバック (followers_count キーを再帰探索)
+    return _find_followers_count(tweet_result)
 
 
 def _find_followers_count(value: Any) -> int:
-    """GraphQL レスポンス内の followers_count を取得する。"""
+    """GraphQL レスポンス内の followers_count / followers を再帰探索する。"""
     if isinstance(value, dict):
-        followers_count = value.get("followers_count")
-        if followers_count is not None:
+        # followers_count (旧 API) を優先
+        for key in ("followers_count", "follower_count"):
+            fc = value.get(key)
+            if fc is not None:
+                try:
+                    return int(fc)
+                except (ValueError, TypeError):
+                    pass
+
+        # followers (新 API の relationship_counts.followers) — 整数値のみ
+        followers_val = value.get("followers")
+        if isinstance(followers_val, (int, float, str)):
             try:
-                return int(followers_count)
+                result = int(followers_val)
+                if result > 0:
+                    return result
             except (ValueError, TypeError):
-                return 0
+                pass
 
         for child in value.values():
-            followers = _find_followers_count(child)
-            if followers:
-                return followers
+            found = _find_followers_count(child)
+            if found:
+                return found
     elif isinstance(value, list):
         for child in value:
-            followers = _find_followers_count(child)
-            if followers:
-                return followers
+            found = _find_followers_count(child)
+            if found:
+                return found
 
     return 0
 

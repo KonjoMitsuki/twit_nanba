@@ -32,3 +32,25 @@ def test_extract_user_followers_count_falls_back_to_recursive_scan():
     }
 
     assert _extract_user_followers_count(tweet_result) == 678
+
+
+def test_extract_user_followers_count_from_relationship_counts():
+    """新しい X GraphQL API 構造: legacy が廃止され relationship_counts に移行。"""
+    tweet_result = {
+        "core": {
+            "user_results": {
+                "result": {
+                    "__typename": "User",
+                    "relationship_counts": {
+                        "followers": 9876,
+                        "following": 123,
+                    },
+                    "rest_id": "12345",
+                }
+            }
+        },
+        "legacy": {"favorite_count": 99},
+    }
+
+    assert _extract_user_followers_count(tweet_result) == 9876
+
