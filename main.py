@@ -29,7 +29,7 @@ import config
 from notion_client_wrapper import artworks, metrics_db
 from notion_client_wrapper import schedule_queue
 from processing import scheduler, new_fans
-from storage import fans_db
+from storage import fans_db, backup_db
 from scraper.browser import create_browser_context, random_wait
 from scraper.metrics import fetch_metrics
 from scraper.fans import fetch_likers
@@ -140,6 +140,19 @@ async def process_artwork(
         # 子（メトリクス）作成時に自動で親（作品マスタ）に紐付けられるため、
         # Python側での明示的な追加は不要（25件超で過去リレーションが消える問題の防止）
 
+        # ── メトリクスのローカルバックアップ ──
+        backup_db.backup_metrics({
+            "snapshot_id": snapshot_page_id,
+            "artwork_page_id": page_id,
+            "stage": current_status,
+            "impressions": metrics["impressions"],
+            "likes": metrics["likes"],
+            "retweets": metrics["retweets"],
+            "followers": metrics.get("followers", 0),
+            "new_fans_count": len(stage_new_fans),
+            "measured_at": datetime.now(timezone.utc).isoformat(),
+        }, db_path=config.BACKUP_DB_PATH)
+
         logger.info(
             "📝 スナップショット保存: imp=%d, likes=%d, rt=%d, new_fans=%d",
             metrics["impressions"],
@@ -170,6 +183,16 @@ async def process_artwork(
                 scheduler.get_stage_display_name(next_stage),
                 next_schedule.isoformat(),
             )
+
+        # ── 作品マスターのローカルバックアップ ──
+        backup_db.backup_artwork({
+            "page_id": page_id,
+            "title": artwork_info["title"],
+            "url": url,
+            "posted_at": posted_at_str,
+            "status": next_stage if next_stage else "COMPLETED",
+            "new_fans_count": current_new_fans_count + len(stage_new_fans),
+        }, db_path=config.BACKUP_DB_PATH)
     except Exception as e:
         logger.error("状態遷移失敗: %s", e)
 
@@ -289,6 +312,16 @@ async def run(headless: bool = True) -> None:
                             image_urls=sq_images if sq_images else None,
                             tags=hashtags if hashtags else None,
                         )
+
+                        # ── 新規登録のローカルバックアップ ──
+                        backup_db.backup_artwork({
+                            "page_id": artwork_page_id,
+                            "title": sq_title or f"作品 ({tweet_url.split('/')[-1]})",
+                            "url": tweet_url,
+                            "posted_at": now.isoformat(),
+                            "status": "5m",
+                            "new_fans_count": 0,
+                        }, db_path=config.BACKUP_DB_PATH)
 
                         logger.info(
                             "🎉 作品マスターDBに登録 → 5m 追跡開始 "

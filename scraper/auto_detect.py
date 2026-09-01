@@ -29,6 +29,7 @@ from playwright.async_api import Page
 import config
 from notion_client_wrapper import artworks
 from processing.scheduler import calculate_next_schedule
+from storage import backup_db
 
 logger = logging.getLogger("auto_detect")
 
@@ -394,6 +395,16 @@ async def check_new_art_post(
             image_urls=image_urls,
             tags=tags,
         )
+
+        # ── 新規検知のローカルバックアップ ──
+        backup_db.backup_artwork({
+            "page_id": page_id,
+            "title": title,
+            "url": tweet_url,
+            "posted_at": posted_at.isoformat(),
+            "status": initial_stage,
+            "new_fans_count": 0,
+        }, db_path=config.BACKUP_DB_PATH)
 
         logger.info(
             "🎉 新しいイラスト投稿を検知・自動登録しました: %s "

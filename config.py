@@ -23,6 +23,7 @@ FANS_DB_PATH: str = os.getenv(
     "FANS_DB_PATH",
     str(Path(__file__).parent / "fans.db"),
 )
+BACKUP_DB_PATH: str = str(Path(__file__).parent / "backup.db")
 
 # =============================================================================
 # Playwright 認証設定
