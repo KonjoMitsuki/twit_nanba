@@ -195,20 +195,6 @@ def update_new_fans_count(page_id: str, count: int) -> None:
     )
 
 
-def add_metrics_relation(page_id: str, metrics_page_id: str) -> None:
-    """時系列ログリレーションにスナップショットを追加する。"""
-    client = get_client()
-    page = client.request(path=f"pages/{page_id}", method="GET")
-    current_relations = page["properties"][config.AW_PROP_METRICS_REL].get("relation", [])
-    current_relations.append({"id": metrics_page_id})
-
-    client.request(
-        path=f"pages/{page_id}",
-        method="PATCH",
-        body={"properties": {config.AW_PROP_METRICS_REL: {"relation": current_relations}}},
-    )
-
-
 def extract_artwork_info(page: dict[str, Any]) -> dict[str, Any]:
     """Notion ページオブジェクトから作品情報を抽出する。"""
     props = page["properties"]

@@ -19,6 +19,7 @@ Notion の作品マスターDB から「次回予定 <= 現在時刻」の作品
 
 import argparse
 import asyncio
+import fcntl
 import logging
 import sys
 import time
@@ -135,8 +136,9 @@ async def process_artwork(
             followers=metrics.get("followers", 0),
         )
 
-        # 作品の時系列ログリレーションにも追加
-        artworks.add_metrics_relation(page_id, snapshot_page_id)
+        # NOTE: 時系列ログリレーションはNotionの双方向リレーションにより
+        # 子（メトリクス）作成時に自動で親（作品マスタ）に紐付けられるため、
+        # Python側での明示的な追加は不要（25件超で過去リレーションが消える問題の防止）
 
         logger.info(
             "📝 スナップショット保存: imp=%d, likes=%d, rt=%d, new_fans=%d",
@@ -363,6 +365,15 @@ def main() -> None:
         help="ブラウザを表示して実行（デバッグ用）",
     )
     args = parser.parse_args()
+
+    # ─── 二重起動防止のロック機構 ───
+    lock_file = open(".process.lock", "w")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        print("⏳ 前の処理がまだ実行中のため、今回の起動をスキップします")
+        sys.exit(0)
+    # ─────────────────────────────────────────
 
     asyncio.run(run(headless=not args.no_headless))
 
