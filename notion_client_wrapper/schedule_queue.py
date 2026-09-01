@@ -114,6 +114,26 @@ def extract_scheduled_post_info(page: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def mark_as_preparing(page_id: str) -> None:
+    """予約投稿レコードのステータスを PREPARING に更新してロックする。
+
+    Args:
+        page_id: 対象ページの ID。
+    """
+    client = get_client()
+    client.request(
+        path=f"pages/{page_id}",
+        method="PATCH",
+        body={
+            "properties": {
+                config.SQ_PROP_STATUS: {
+                    "select": {"name": config.STATUS_SQ_PREPARING},
+                },
+            }
+        },
+    )
+
+
 def mark_as_posted(page_id: str, tweet_url: str) -> None:
     """予約投稿レコードのステータスを POSTED に更新し、投稿後URLをセットする。
 

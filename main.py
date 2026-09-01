@@ -247,6 +247,9 @@ async def run(headless: bool = True) -> None:
                 sq_images = sq_info["image_urls"]
                 sq_scheduled_at = sq_info.get("scheduled_at")
 
+                # ★ 追加: 他のプロセスが拾わないようにステータスを PREPARING に変更（ロック）
+                schedule_queue.mark_as_preparing(sq_page_id)
+
                 logger.info(
                     "📤 予約投稿を準備・実行: %s (予定: %s)",
                     sq_title or "(無題)",
