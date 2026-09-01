@@ -18,23 +18,28 @@ from playwright.async_api import Page, Response
 
 logger = logging.getLogger("poster")
 
-# テキストエリアのセレクタ
+# テキストエリアのセレクタ（モーダル・インライン両対応）
 TEXTAREA_SELECTOR = (
-    'div[data-testid="tweetTextarea_0"], '
-    'div[role="textbox"][contenteditable="true"]'
+    '[data-testid="tweetTextarea_0"], '
+    '[data-testid="tweetTextarea_0_label"], '
+    'div[role="textbox"][contenteditable="true"], '
+    'div.public-DraftEditor-content'
 )
 
 # 投稿ボタンのセレクタ
 TWEET_BUTTON_SELECTOR = (
     'button[data-testid="tweetButton"], '
     'button[data-testid="tweetButtonInline"], '
-    'button[data-testid="postButton"]'
+    'button[data-testid="postButton"], '
+    'button:has-text("ポストする"), '
+    'button:has-text("投稿する")'
 )
 
 # ファイル入力のセレクタ
 FILE_INPUT_SELECTOR = (
     'input[data-testid="fileInput"], '
-    'input[type="file"][accept*="image"]'
+    'input[type="file"][accept*="image"], '
+    'input[type="file"]'
 )
 
 
@@ -148,12 +153,24 @@ async def post_tweet(
         await page.goto(
             "https://x.com/compose/post",
             wait_until="domcontentloaded",
-            timeout=15000,
+            timeout=20000,
         )
 
-        # テキストエリアの表示を待機
+        # テキストエリアの表示を待機（最大15秒）
         textarea = page.locator(TEXTAREA_SELECTOR).first
-        await textarea.wait_for(state="visible", timeout=8000)
+        try:
+            await textarea.wait_for(state="visible", timeout=15000)
+        except Exception:
+            # もし /compose/post で開かなかった場合、サイドバーの「ポストする」ボタンをクリックしてみる
+            logger.warning("テキストエリアが即座に見つからなかったため、新規投稿ボタンの探索を試みます...")
+            compose_btn = page.locator(
+                'a[data-testid="SideNav_NewTweet_Button"], '
+                'a[href="/compose/post"], '
+                'button[data-testid="SideNav_NewTweet_Button"]'
+            ).first
+            if await compose_btn.count() > 0:
+                await compose_btn.click()
+            await textarea.wait_for(state="visible", timeout=10000)
 
         # ─── 3. 本文の高速入力 ───
         await textarea.click()
