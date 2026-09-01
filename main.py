@@ -184,12 +184,14 @@ async def run(headless: bool = True) -> None:
     3. ユーザー照合の事前準備
     4. ブラウザ起動 & 各作品を処理
     """
-    # ─── 0. 予約投稿の対象を取得 ───
+    # ─── 0. 予約投稿の対象を取得（事前準備時間を含む） ───
     scheduled_posts: list[dict] = []
     try:
-        scheduled_posts = schedule_queue.get_due_scheduled_posts()
+        scheduled_posts = schedule_queue.get_due_scheduled_posts(
+            ahead_minutes=config.SCHEDULE_QUEUE_PRE_FETCH_MIN
+        )
         if scheduled_posts:
-            logger.info("📬 予約投稿対象: %d 件", len(scheduled_posts))
+            logger.info("📬 予約投稿対象: %d 件 (最大%d分前からの準備)", len(scheduled_posts), config.SCHEDULE_QUEUE_PRE_FETCH_MIN)
     except Exception as e:
         logger.error("予約投稿の取得に失敗: %s", e)
 
@@ -243,14 +245,20 @@ async def run(headless: bool = True) -> None:
                 sq_title = sq_info["title"]
                 sq_text = sq_info["text"]
                 sq_images = sq_info["image_urls"]
+                sq_scheduled_at = sq_info.get("scheduled_at")
 
                 logger.info(
-                    "📤 予約投稿を実行: %s", sq_title or "(無題)"
+                    "📤 予約投稿を準備・実行: %s (予定: %s)",
+                    sq_title or "(無題)",
+                    sq_scheduled_at or "即時",
                 )
 
                 try:
                     tweet_url = await post_tweet(
-                        page, sq_text, sq_images
+                        page,
+                        sq_text,
+                        sq_images,
+                        scheduled_at_iso=sq_scheduled_at,
                     )
                 except Exception as e:
                     logger.error("投稿処理で例外: %s", e)

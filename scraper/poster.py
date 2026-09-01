@@ -130,13 +130,18 @@ async def post_tweet(
     page: Page,
     text: str,
     image_urls: list[str] | None = None,
+    scheduled_at_iso: str | None = None,
 ) -> Optional[str]:
     """Playwright でツイートを高速に投稿し、投稿後のツイートURLを返す。
+
+    事前準備として画像DL・テキスト入力・画像添付を行い、
+    scheduled_at_iso が未来日時の場合は予約時刻まで待機してから投稿ボタンをクリックします。
 
     Args:
         page: Playwright の Page オブジェクト（認証済みセッション）。
         text: ツイート本文（改行・スペース含む）。
         image_urls: 添付画像のURL リスト（Notion S3 URL 等）。
+        scheduled_at_iso: 投稿予約日時（ISO 8601 文字列）。
 
     Returns:
         str | None: 投稿成功時はツイートURL、失敗時は None。
@@ -211,9 +216,32 @@ async def post_tweet(
             except Exception:
                 pass
 
-        # ─── 5. 投稿ボタンをクリック & GraphQL / レスポンス傍受 ───
+        # ─── 5. 投稿ボタンの準備 & 予約時刻までのカウントダウン待機 ───
         tweet_button = page.locator(TWEET_BUTTON_SELECTOR).first
         await tweet_button.wait_for(state="visible", timeout=5000)
+
+        if scheduled_at_iso:
+            try:
+                from datetime import datetime, timezone
+                # ISO 8601 パース
+                fixed_iso = scheduled_at_iso.replace("Z", "+00:00")
+                sched_dt = datetime.fromisoformat(fixed_iso)
+                if sched_dt.tzinfo is None:
+                    sched_dt = sched_dt.replace(tzinfo=timezone.utc)
+
+                diff_sec = (sched_dt - datetime.now(timezone.utc)).total_seconds()
+                if diff_sec > 0:
+                    # 最大待機時間は安全のため 6分(360秒) に制限
+                    wait_sec = min(diff_sec, 360.0)
+                    logger.info(
+                        "⏰ 投稿準備が完了しました。予約日時 (%s) まで %.1f 秒待機します...",
+                        sched_dt.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                        wait_sec,
+                    )
+                    await asyncio.sleep(wait_sec)
+                    logger.info("🎯 予約時刻になりました！投稿を実行します")
+            except Exception as e:
+                logger.warning("予約日時待機処理で例外（即時投稿します）: %s", e)
 
         posted_tweet_url: Optional[str] = None
 

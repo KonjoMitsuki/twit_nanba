@@ -5,15 +5,18 @@ Notion 上の予約投稿DBから投稿予定レコードを取得し、
 投稿結果に応じてステータスを更新する操作を提供します。
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import config
 from notion_client_wrapper import get_client
 
 
-def get_due_scheduled_posts() -> list[dict[str, Any]]:
-    """「ステータス == SCHEDULED」かつ「投稿予約日時 <= 現在時刻」のレコード一覧を取得する。
+def get_due_scheduled_posts(ahead_minutes: int = 0) -> list[dict[str, Any]]:
+    """「ステータス == SCHEDULED」かつ「投稿予約日時 <= 現在時刻 + ahead_minutes」のレコード一覧を取得する。
+
+    Args:
+        ahead_minutes: 何分先までの予約投稿を対象とするか（事前準備用）。
 
     Returns:
         list[dict]: 投稿対象のNotionページオブジェクトのリスト。
@@ -22,7 +25,8 @@ def get_due_scheduled_posts() -> list[dict[str, Any]]:
         return []
 
     client = get_client()
-    now_iso = datetime.now(timezone.utc).isoformat()
+    cutoff_time = datetime.now(timezone.utc) + timedelta(minutes=ahead_minutes)
+    cutoff_iso = cutoff_time.isoformat()
 
     results: list[dict[str, Any]] = []
     has_more = True
@@ -38,7 +42,7 @@ def get_due_scheduled_posts() -> list[dict[str, Any]]:
                     },
                     {
                         "property": config.SQ_PROP_SCHEDULED_AT,
-                        "date": {"on_or_before": now_iso},
+                        "date": {"on_or_before": cutoff_iso},
                     },
                 ]
             }
