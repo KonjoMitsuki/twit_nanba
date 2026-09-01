@@ -2,9 +2,11 @@
 scraper/poster.py — Playwright を利用した X (Twitter) 投稿自動化モジュール
 
 Notion の予約投稿DBから取得したテキスト・画像を
-X のツイート作成画面を通して自動投稿します。
+X のツイート作成画面を通して高速かつ確実に自動投稿します。
 """
 
+import asyncio
+import json
 import logging
 import os
 import re
@@ -12,178 +14,71 @@ import tempfile
 from typing import Optional
 
 import httpx
-from playwright.async_api import Page
-
-from scraper.browser import random_wait
+from playwright.async_api import Page, Response
 
 logger = logging.getLogger("poster")
 
+# テキストエリアのセレクタ
+TEXTAREA_SELECTOR = (
+    'div[data-testid="tweetTextarea_0"], '
+    'div[role="textbox"][contenteditable="true"]'
+)
 
-def _get_compose_input_selectors() -> list[str]:
-    """X の投稿画面で使われ得るテキスト入力セレクタ候補を返す。"""
-    return [
-        'div[data-testid="tweetTextarea_0"]',
-        'div[data-testid="tweetTextarea"]',
-        '[data-testid="tweetTextarea_0"]',
-        '[data-testid="tweetTextarea"]',
-        'div[role="textbox"]',
-        'textarea',
-        'div[contenteditable="true"]',
-        'div[contenteditable="plaintext-only"]',
-        'article[role="textbox"]',
-        '[role="textbox"]',
-    ]
+# 投稿ボタンのセレクタ
+TWEET_BUTTON_SELECTOR = (
+    'button[data-testid="tweetButton"], '
+    'button[data-testid="tweetButtonInline"], '
+    'button[data-testid="postButton"]'
+)
 
-
-def _get_tweet_button_selectors() -> list[str]:
-    """投稿ボタン候補を返す。"""
-    return [
-        'button[data-testid="tweetButton"]',
-        'button[data-testid="postButton"]',
-        'button[data-testid="tweetButtonInline"]',
-        'button[data-testid="new-tweet-button"]',
-        'button:has-text("投稿")',
-        'button:has-text("Post")',
-    ]
+# ファイル入力のセレクタ
+FILE_INPUT_SELECTOR = (
+    'input[data-testid="fileInput"], '
+    'input[type="file"][accept*="image"]'
+)
 
 
-async def _find_visible_locator(page: Page, selectors: list[str], timeout_ms: int = 15000):
-    """候補セレクタを順に試し、最初に見つかった visible なロケータを返す。
-
-    2フェーズ方式:
-      Phase 1: 全候補を count() で高速スキャン（存在チェックのみ）
-      Phase 2: 見つかった候補に対して wait_for(visible) を実行
-      Fallback: どれも即座に見つからない場合、全候補を OR 結合して一発待機
-    """
-    import time as _time
-
-    # Phase 1: 高速スキャン — DOM に存在する候補を探す
-    for selector in selectors:
-        locator = page.locator(selector).first
-        try:
-            if await locator.count() > 0:
-                # Phase 2: 存在する要素が visible になるのを待つ
-                await locator.wait_for(state="visible", timeout=timeout_ms)
-                return locator
-        except Exception:
-            # このセレクタは visible にならなかった → 次の候補へ
-            continue
-
-    # Fallback: 全候補を OR 結合して一発で待機
-    # Playwright の '>>' や ',' 区切りではなく、Promise.race 的に待つ
-    combined_selector = ", ".join(selectors)
-    locator = page.locator(combined_selector).first
+async def _download_single_image(client: httpx.AsyncClient, url: str) -> Optional[str]:
+    """単一画像をダウンロードして一時ファイルパスを返す。"""
     try:
-        await locator.wait_for(state="visible", timeout=timeout_ms)
-        return locator
+        response = await client.get(url)
+        response.raise_for_status()
+
+        content_type = response.headers.get("content-type", "")
+        if "png" in content_type:
+            suffix = ".png"
+        elif "gif" in content_type:
+            suffix = ".gif"
+        elif "webp" in content_type:
+            suffix = ".webp"
+        else:
+            suffix = ".jpg"
+
+        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        tmp.write(response.content)
+        tmp.close()
+        return tmp.name
     except Exception as e:
-        raise TimeoutError(
-            f"候補セレクタが見つかりませんでした "
-            f"(timeout={timeout_ms}ms): {selectors}"
-        ) from e
-
-
-async def _open_compose_page(page: Page) -> None:
-    """compose 画面を開く。ログイン画面やホーム画面が表示されればフォールバックする。"""
-    # まず直接 compose/post を開く
-    try:
-        await page.goto(
-            "https://x.com/compose/post",
-            wait_until="domcontentloaded",
-            timeout=30000,
-        )
-        # DOM のレンダリングを待つ
-        await random_wait(min_sec=2.0, max_sec=3.0)
-
-        # ログインにリダイレクトされていなければ OK
-        if "/login" not in page.url:
-            return
-    except Exception as e:
-        logger.warning("compose/post への直接遷移に失敗: %s", e)
-
-    # フォールバック: ホーム画面経由
-    try:
-        await page.goto(
-            "https://x.com/home",
-            wait_until="domcontentloaded",
-            timeout=30000,
-        )
-        await random_wait(min_sec=1.5, max_sec=2.5)
-
-        # ホーム画面から compose リンク/ボタンを探す
-        home_compose = page.locator(
-            'a[href*="/compose/post"], '
-            'button[data-testid="new-tweet-button"], '
-            'button:has-text("投稿")'
-        )
-        if await home_compose.count() > 0:
-            await home_compose.first.click()
-            await random_wait(min_sec=2.0, max_sec=3.0)
-            return
-    except Exception as e:
-        logger.warning("ホーム画面経由のフォールバックに失敗: %s", e)
-
-    # 最終手段: 再度直接遷移
-    await page.goto(
-        "https://x.com/compose/post",
-        wait_until="domcontentloaded",
-        timeout=30000,
-    )
-    await random_wait(min_sec=2.0, max_sec=3.0)
+        logger.error("画像ダウンロード失敗: %s — %s", url[:80], e)
+        return None
 
 
 async def _download_images(image_urls: list[str]) -> list[str]:
-    """画像URLリストをダウンロードし、一時ファイルパスのリストを返す。
+    """画像URLリストを並行ダウンロードし、一時ファイルパスのリストを返す。"""
+    if not image_urls:
+        return []
 
-    Args:
-        image_urls: ダウンロード対象の画像URLリスト。
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        tasks = [_download_single_image(client, url) for url in image_urls]
+        results = await asyncio.gather(*tasks)
 
-    Returns:
-        list[str]: 一時ファイルの絶対パスリスト。
-    """
-    temp_paths: list[str] = []
-
-    for url in image_urls:
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(url)
-                response.raise_for_status()
-
-            # ファイル拡張子を推定
-            content_type = response.headers.get("content-type", "")
-            if "png" in content_type:
-                suffix = ".png"
-            elif "gif" in content_type:
-                suffix = ".gif"
-            elif "webp" in content_type:
-                suffix = ".webp"
-            else:
-                suffix = ".jpg"
-
-            tmp = tempfile.NamedTemporaryFile(
-                suffix=suffix, delete=False
-            )
-            tmp.write(response.content)
-            tmp.close()
-            temp_paths.append(tmp.name)
-
-            logger.debug("画像ダウンロード完了: %s → %s", url[:80], tmp.name)
-
-        except Exception as e:
-            logger.error("画像ダウンロード失敗: %s — %s", url[:80], e)
-
+    temp_paths = [r for r in results if r is not None]
+    logger.info("画像ダウンロード完了 (%d/%d 枚)", len(temp_paths), len(image_urls))
     return temp_paths
 
 
 def _extract_hashtags(text: str) -> list[str]:
-    """本文からハッシュタグ名を抽出する。
-
-    Args:
-        text: ツイート本文。
-
-    Returns:
-        list[str]: ハッシュタグ名のリスト（# 記号なし）。
-    """
+    """本文からハッシュタグ名を抽出する。"""
     return re.findall(r"#([\wぁ-んァ-ヶ一-龯々ー]+)", text)
 
 
@@ -196,12 +91,42 @@ def _cleanup_temp_files(paths: list[str]) -> None:
             pass
 
 
+def _extract_tweet_url_from_graphql(json_data: dict) -> Optional[str]:
+    """CreateTweet の GraphQL レスポンスからツイートURLを構築する。"""
+    try:
+        # パターン: data -> create_tweet -> tweet_results -> result
+        data = json_data.get("data", {})
+        create_tweet = data.get("create_tweet", {})
+        result = create_tweet.get("tweet_results", {}).get("result", {})
+        if not result and "create_tweet_v2" in data:
+            result = data.get("create_tweet_v2", {}).get("tweet_results", {}).get("result", {})
+
+        rest_id = result.get("rest_id")
+        if not rest_id:
+            return None
+
+        # 投稿ユーザーのスクリーンネーム取得（フォールバックあり）
+        screen_name = (
+            result.get("core", {})
+            .get("user_results", {})
+            .get("result", {})
+            .get("legacy", {})
+            .get("screen_name")
+        )
+        if screen_name:
+            return f"https://x.com/{screen_name}/status/{rest_id}"
+        return f"https://x.com/i/status/{rest_id}"
+    except Exception as e:
+        logger.debug("GraphQLパースエラー: %s", e)
+        return None
+
+
 async def post_tweet(
     page: Page,
     text: str,
     image_urls: list[str] | None = None,
 ) -> Optional[str]:
-    """Playwright でツイートを投稿し、投稿後のツイートURLを返す。
+    """Playwright でツイートを高速に投稿し、投稿後のツイートURLを返す。
 
     Args:
         page: Playwright の Page オブジェクト（認証済みセッション）。
@@ -214,206 +139,141 @@ async def post_tweet(
     temp_paths: list[str] = []
 
     try:
-        # ─── 1. 画像のダウンロード ───
+        # ─── 1. 画像の並行ダウンロード ───
         if image_urls:
             temp_paths = await _download_images(image_urls)
-            if not temp_paths:
-                logger.warning(
-                    "画像のダウンロードに全て失敗しました — テキストのみで投稿します"
-                )
 
-        # ─── 2. ツイート作成画面を開く ───
-        logger.info("📝 ツイート作成画面を表示中...")
-        await _open_compose_page(page)
+        # ─── 2. ツイート作成画面へ移動 ───
+        logger.info("📝 ツイート作成画面へ移動中...")
+        await page.goto(
+            "https://x.com/compose/post",
+            wait_until="domcontentloaded",
+            timeout=15000,
+        )
 
-        # テキストエリアの表示を待機（固定データテストIDに依存しないよう複数候補を試す）
-        textarea = await _find_visible_locator(page, _get_compose_input_selectors(), timeout_ms=15000)
-        await random_wait(min_sec=0.5, max_sec=1.5)
+        # テキストエリアの表示を待機
+        textarea = page.locator(TEXTAREA_SELECTOR).first
+        await textarea.wait_for(state="visible", timeout=8000)
 
-        # ─── 3. 本文を入力（改行を維持） ───
+        # ─── 3. 本文の高速入力 ───
         await textarea.click()
-        await random_wait(min_sec=0.3, max_sec=0.7)
-
-        # 改行を Shift+Enter で入力するため、行ごとに分割
+        # 改行を含むテキストを一気に入力
         lines = text.split("\n")
         for i, line in enumerate(lines):
             if line:
-                await page.keyboard.type(line, delay=20)
+                await page.keyboard.type(line, delay=5)
             if i < len(lines) - 1:
                 await page.keyboard.press("Shift+Enter")
 
         logger.info("本文入力完了 (%d 文字)", len(text))
-        await random_wait(min_sec=0.5, max_sec=1.0)
 
-        # ─── 4. 画像を添付 ───
+        # ─── 4. 画像の高速添付 ───
         if temp_paths:
-            attached = False
-
-            # 方式A: メディアボタンをクリック → file_chooser で受け取る
-            media_button_selectors = [
-                '[data-testid="fileInput"]',
-                '[aria-label="メディア"]',
-                '[aria-label="画像"]',
-                '[aria-label="Media"]',
-                '[aria-label="Add photos or video"]',
-                'button[aria-label*="メディア"]',
-                'button[aria-label*="画像"]',
-            ]
-            for selector in media_button_selectors:
-                btn = page.locator(selector)
+            file_input = page.locator(FILE_INPUT_SELECTOR).first
+            try:
+                # 隠し input に直接セット（最速）
+                await file_input.set_input_files(temp_paths, timeout=3000)
+                logger.info("画像添付完了 (直接セット: %d 枚)", len(temp_paths))
+            except Exception:
+                # フォールバック: ファイルチューザー経由
                 try:
-                    if await btn.count() > 0:
-                        async with page.expect_file_chooser(
-                            timeout=5000,
-                        ) as fc_info:
-                            await btn.first.click()
-                        file_chooser = await fc_info.value
-                        await file_chooser.set_files(temp_paths)
-                        attached = True
-                        logger.info(
-                            "画像添付完了 (file_chooser方式, %d 枚)",
-                            len(temp_paths),
-                        )
-                        break
-                except Exception:
-                    continue
+                    async with page.expect_file_chooser(timeout=3000) as fc_info:
+                        media_btn = page.locator('[aria-label="メディア"], [aria-label="画像"], button[aria-label*="メディア"]').first
+                        await media_btn.click()
+                    file_chooser = await fc_info.value
+                    await file_chooser.set_files(temp_paths)
+                    logger.info("画像添付完了 (file_chooser: %d 枚)", len(temp_paths))
+                except Exception as e:
+                    logger.warning("画像添付に失敗しました（テキストのみで続行）: %s", e)
 
-            # 方式B: 隠し <input type="file"> に直接セット（フォールバック）
-            if not attached:
-                for selector in [
-                    'input[data-testid="fileInput"]',
-                    'input[type="file"]',
-                ]:
-                    try:
-                        candidate = page.locator(selector)
-                        if await candidate.count() > 0:
-                            await candidate.set_input_files(
-                                temp_paths, timeout=10000,
-                            )
-                            attached = True
-                            logger.info(
-                                "画像添付完了 (input方式, %d 枚)",
-                                len(temp_paths),
-                            )
-                            break
-                    except Exception:
-                        continue
-
-            if attached:
-                # 添付完了のUI反映を待機
-                attachments = page.locator(
-                    'div[data-testid="attachments"]'
+            # 添付画像プレビューの表示を短時間待機
+            try:
+                await page.locator('div[data-testid="attachments"]').wait_for(
+                    state="visible", timeout=5000
                 )
+            except Exception:
+                pass
+
+        # ─── 5. 投稿ボタンをクリック & GraphQL / レスポンス傍受 ───
+        tweet_button = page.locator(TWEET_BUTTON_SELECTOR).first
+        await tweet_button.wait_for(state="visible", timeout=5000)
+
+        posted_tweet_url: Optional[str] = None
+
+        # GraphQL CreateTweet のレスポンスを拾うハンドラ
+        async def handle_response(response: Response):
+            nonlocal posted_tweet_url
+            if posted_tweet_url:
+                return
+            if "/graphql/" in response.url and "CreateTweet" in response.url:
                 try:
-                    await attachments.wait_for(
-                        state="visible", timeout=15000,
-                    )
+                    json_body = await response.json()
+                    url = _extract_tweet_url_from_graphql(json_body)
+                    if url:
+                        posted_tweet_url = url
+                        logger.info("⚡ GraphQL CreateTweet レスポンスからURLを即座に取得: %s", url)
                 except Exception:
-                    logger.debug(
-                        "添付画像のUI表示待機がタイムアウトしましたが続行します"
-                    )
-                await random_wait(min_sec=0.5, max_sec=1.5)
-            else:
-                logger.warning(
-                    "画像の添付に失敗しました — テキストのみで投稿を続行します"
-                )
+                    pass
 
-        # ─── 5. 投稿ボタンをクリック ───
-        tweet_button = await _find_visible_locator(
-            page,
-            _get_tweet_button_selectors(),
-            timeout_ms=10000,
-        )
+        page.on("response", handle_response)
 
-        await tweet_button.click()
-        logger.info("投稿ボタンをクリックしました")
-
-        # compose 画面が閉じる（URLが /compose/post から変わる）のを待つ
         try:
-            await page.wait_for_url(
-                lambda url: "/compose/post" not in url,
-                timeout=30000,
-            )
+            await tweet_button.click()
+            logger.info("投稿ボタンをクリックしました")
+
+            # GraphQL レスポンスまたは compose 画面終了を待機（最大8秒）
+            for _ in range(16):
+                if posted_tweet_url:
+                    break
+                await asyncio.sleep(0.5)
+
+        finally:
+            page.remove_listener("response", handle_response)
+
+        # ─── 6. URL のフォールバック取得 ───
+        if posted_tweet_url:
+            logger.info("✅ 投稿成功: %s", posted_tweet_url)
+            return posted_tweet_url
+
+        # 6a. 画面遷移後の URL から判定
+        if "/status/" in page.url:
+            url = page.url.split("?")[0]
+            logger.info("✅ 投稿成功 (遷移URL): %s", url)
+            return url
+
+        # 6b. トースト通知から判定（短時間）
+        try:
+            toast_link = page.locator('[data-testid="toast"] a[href*="/status/"]').first
+            if await toast_link.count() > 0:
+                href = await toast_link.get_attribute("href")
+                if href and "/status/" in href:
+                    url = "https://x.com" + href.split("?")[0] if href.startswith("/") else href.split("?")[0]
+                    logger.info("✅ 投稿成功 (トーストから取得): %s", url)
+                    return url
         except Exception:
             pass
 
-        await random_wait(min_sec=2.0, max_sec=3.0)
-
-        # ─── 6. ツイートURLを取得 ───
-        tweet_url = None
-
-        # 6a. 直接 /status/ ページに遷移した場合（稀だが対応）
-        if "/status/" in page.url:
-            tweet_url = page.url.split("?")[0]
-            logger.info("✅ 投稿成功: %s", tweet_url)
-            return tweet_url
-
-        # 6b. トースト通知内のリンクから取得
-        #     X は投稿後 "ポストを送信しました [表示]" のトーストを表示する
+        # 6c. プロフィールから最新ツイート取得（最終フォールバック）
         try:
-            toast_link = page.locator(
-                '[data-testid="toast"] a[href*="/status/"]'
-            )
-            await toast_link.wait_for(state="visible", timeout=10000)
-            href = await toast_link.get_attribute("href")
-            if href and "/status/" in href:
-                if href.startswith("/"):
-                    tweet_url = "https://x.com" + href.split("?")[0]
-                else:
-                    tweet_url = href.split("?")[0]
-                logger.info("✅ 投稿成功 (トーストから取得): %s", tweet_url)
-                return tweet_url
-        except Exception:
-            logger.debug("トースト通知からURLを取得できませんでした")
-
-        # 6c. 自プロフィールの最新ツイートから取得
-        try:
-            # ナビバーのプロフィールリンクから自分のスクリーンネームを取得
-            profile_link = page.locator(
-                'a[data-testid="AppTabBar_Profile_Link"]'
-            )
+            profile_link = page.locator('a[data-testid="AppTabBar_Profile_Link"]').first
             if await profile_link.count() > 0:
                 profile_href = await profile_link.get_attribute("href")
                 if profile_href:
-                    profile_url = (
-                        "https://x.com" + profile_href
-                        if profile_href.startswith("/")
-                        else profile_href
-                    )
-                    await page.goto(
-                        profile_url,
-                        wait_until="domcontentloaded",
-                        timeout=15000,
-                    )
-                    await page.wait_for_selector(
-                        "article[data-testid='tweet']",
-                        timeout=15000,
-                    )
-                    await random_wait(min_sec=1.0, max_sec=2.0)
-
-                    # 最新ツイートの time 要素の親 <a> からURLを取得
-                    first_tweet = page.locator(
-                        "article[data-testid='tweet']"
-                    ).first
+                    profile_url = f"https://x.com{profile_href}" if profile_href.startswith("/") else profile_href
+                    await page.goto(profile_url, wait_until="domcontentloaded", timeout=10000)
+                    first_tweet = page.locator("article[data-testid='tweet']").first
+                    await first_tweet.wait_for(state="visible", timeout=5000)
                     time_el = first_tweet.locator("time").first
                     if await time_el.count() > 0:
-                        href = await time_el.evaluate(
-                            "el => el.closest('a')?.href"
-                        )
+                        href = await time_el.evaluate("el => el.closest('a')?.href")
                         if href and "/status/" in href:
-                            tweet_url = href.split("?")[0]
-                            logger.info(
-                                "✅ 投稿成功 (プロフィールから取得): %s",
-                                tweet_url,
-                            )
-                            return tweet_url
+                            url = href.split("?")[0]
+                            logger.info("✅ 投稿成功 (自プロフィールから取得): %s", url)
+                            return url
         except Exception as e:
-            logger.debug("プロフィールからURLを取得できませんでした: %s", e)
+            logger.debug("プロフィールからのURL取得失敗: %s", e)
 
-        logger.warning(
-            "投稿は送信されましたがURLを取得できませんでした (現在URL: %s)",
-            page.url,
-        )
+        logger.warning("投稿は実行されましたが、URLを取得できませんでした (現在のURL: %s)", page.url)
         return None
 
     except Exception as e:
@@ -423,3 +283,4 @@ async def post_tweet(
     finally:
         # ─── 7. 一時ファイルのクリーンアップ ───
         _cleanup_temp_files(temp_paths)
+
