@@ -3,6 +3,7 @@
 auth_state.json
 .auto_detect_last_check
 fans.db
+backup.db
 
 # Python
 __pycache__/
