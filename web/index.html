@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X Art Analytics</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar"><a class="brand" href="/">X Art <em>Analytics</em></a><span class="eyebrow">CREATIVE LOG / 01</span></header>
+    <section class="hero"><div><p class="kicker">MONTHLY ARCHIVE</p><h1 id="month-title">読み込み中</h1><p class="subline">作品の投稿と、その後の反応をひとつの景色で。</p></div><div class="month-controls"><button id="prev-month" class="icon-button" aria-label="前の月">←</button><button id="today" class="today-button">今日</button><button id="next-month" class="icon-button" aria-label="次の月">→</button></div></section>
+    <section class="summary" id="summary" aria-label="月間サマリー"></section>
+    <section class="calendar-wrap"><div class="weekdays"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div><div id="calendar" class="calendar" aria-live="polite"></div></section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
