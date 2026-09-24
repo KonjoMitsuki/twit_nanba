@@ -132,6 +132,12 @@ X_SCREEN_NAME: str = os.getenv("X_SCREEN_NAME", "")
 AUTO_DETECT_INTERVAL_MIN: int = 15 * 60   # 最短15分
 AUTO_DETECT_INTERVAL_MAX: int = 30 * 60   # 最長30分
 
+# 投稿時刻の1分後に行う固定チェック（JST）。乱数間隔のチェックも継続する。
+AUTO_DETECT_FIXED_CHECK_TIMES: tuple[tuple[int, int], ...] = (
+    (12, 1),
+    (17, 1),
+)
+
 # 最終チェック時刻の永続化ファイルパス
 AUTO_DETECT_STATE_FILE: str = str(
     Path(__file__).parent / ".auto_detect_last_check"

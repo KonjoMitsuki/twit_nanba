@@ -23,6 +23,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
+from zoneinfo import ZoneInfo
 
 from playwright.async_api import Page
 
@@ -33,6 +34,7 @@ from storage import backup_db
 from storage import app_db
 
 logger = logging.getLogger("auto_detect")
+JST = ZoneInfo("Asia/Tokyo")
 
 
 # ─── 間隔制御 ─────────────────────────────────────────────────
@@ -60,7 +62,21 @@ def should_check_now() -> bool:
         logger.warning("状態ファイルの読み込み失敗 (チェック実行): %s", e)
         return True
 
+    now = datetime.now(JST)
     elapsed = time.time() - last_check_ts
+
+    # 固定枠は、cron の実行間隔や一時的な遅延があっても枠を逃さない。
+    for hour, minute in config.AUTO_DETECT_FIXED_CHECK_TIMES:
+        fixed_check_at = now.replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
+        if now >= fixed_check_at and last_check_ts < fixed_check_at.timestamp():
+            logger.info(
+                "🔍 固定チェック時刻 (%02d:%02d JST) を経過: チェック実行",
+                hour,
+                minute,
+            )
+            return True
 
     # ランダムな間隔を決定（15〜30分）
     # 毎回同じ閾値にならないよう、チェック判定のたびにランダム生成
