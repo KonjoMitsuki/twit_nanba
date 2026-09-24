@@ -30,6 +30,7 @@ import config
 from notion_client_wrapper import artworks
 from processing.scheduler import calculate_next_schedule
 from storage import backup_db
+from storage import app_db
 
 logger = logging.getLogger("auto_detect")
 
@@ -387,18 +388,37 @@ async def check_new_art_post(
 
         title = f"作品 ({tweet_id})"
 
-        page_id = artworks.create_artwork_auto(
-            url=tweet_url,
-            title=title,
-            posted_at=posted_at,
-            initial_stage=initial_stage,
-            image_urls=image_urls,
-            tags=tags,
-        )
+        page_id = None
+        try:
+            page_id = artworks.create_artwork_auto(
+                url=tweet_url,
+                title=title,
+                posted_at=posted_at,
+                initial_stage=initial_stage,
+                image_urls=image_urls,
+                tags=tags,
+            )
+            logger.info("Notion 作品登録成功: %s", page_id)
+        except Exception as e:
+            logger.error("Notion 作品登録失敗: %s", e)
+
+        try:
+            app_artwork_id = app_db.upsert_artwork(
+                tweet_id=tweet_id,
+                url=tweet_url,
+                title=title,
+                posted_at=posted_at.isoformat(),
+                status=initial_stage,
+                image_urls=image_urls,
+                tags=tags,
+            )
+            logger.info("App DB 作品登録成功: %s", app_artwork_id)
+        except Exception as e:
+            logger.error("App DB 作品登録失敗: %s", e)
 
         # ── 新規検知のローカルバックアップ ──
         backup_db.backup_artwork({
-            "page_id": page_id,
+            "page_id": page_id or "(Notion 保存失敗)",
             "title": title,
             "url": tweet_url,
             "posted_at": posted_at.isoformat(),
@@ -411,7 +431,7 @@ async def check_new_art_post(
             "(開始ステージ: %s, Page ID: %s)",
             tweet_id,
             initial_stage,
-            page_id,
+            page_id or "(Notion 保存失敗)",
         )
 
         save_last_check_time()

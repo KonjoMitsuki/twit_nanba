@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import calendar
-import json
 import os
 import sqlite3
 import uuid
@@ -87,6 +85,31 @@ def _json_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+def find_artwork_by_tweet_id(
+    tweet_id: str,
+    db_path: str | None = None,
+) -> dict[str, Any] | None:
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        return _json_row(connection.execute(
+            "SELECT * FROM artworks WHERE tweet_id = ?",
+            (tweet_id,),
+        ).fetchone())
+
+
+def metric_exists(
+    artwork_id: str,
+    stage: str,
+    db_path: str | None = None,
+) -> bool:
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        return connection.execute(
+            "SELECT 1 FROM metric_snapshots WHERE artwork_id = ? AND stage = ?",
+            (artwork_id, stage),
+        ).fetchone() is not None
+
+
 def create_artwork(
     *,
     tweet_id: str,
@@ -116,6 +139,83 @@ def create_artwork(
     return artwork_id
 
 
+def upsert_artwork(
+    *,
+    tweet_id: str,
+    url: str,
+    title: str,
+    posted_at: str,
+    status: str = "TRACKING",
+    next_schedule: str | None = None,
+    new_fans_count: int = 0,
+    image_urls: list[str] | None = None,
+    tags: list[str] | None = None,
+    db_path: str | None = None,
+) -> str:
+    """Insert or update an artwork using the X post ID as the stable key."""
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        existing = connection.execute(
+            "SELECT id FROM artworks WHERE tweet_id = ? OR url = ? LIMIT 1",
+            (tweet_id, url),
+        ).fetchone()
+        artwork_id = existing["id"] if existing else f"art_{tweet_id}"
+        now = _now()
+        connection.execute(
+            """INSERT INTO artworks
+            (id, tweet_id, url, title, posted_at, status, next_schedule,
+             new_fans_count, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              tweet_id=excluded.tweet_id, url=excluded.url, title=excluded.title,
+              posted_at=excluded.posted_at, status=excluded.status,
+              next_schedule=excluded.next_schedule,
+              next_schedule=COALESCE(excluded.next_schedule, artworks.next_schedule),
+              new_fans_count=excluded.new_fans_count, updated_at=excluded.updated_at""",
+            (artwork_id, tweet_id, url, title, posted_at, status, next_schedule,
+             new_fans_count, now, now),
+        )
+        if image_urls:
+            connection.execute("DELETE FROM artwork_images WHERE artwork_id = ?", (artwork_id,))
+            for order, image_url in enumerate(image_urls, 1):
+                connection.execute(
+                    "INSERT INTO artwork_images (id, artwork_id, image_order, source_url) VALUES (?, ?, ?, ?)",
+                    (f"img_{uuid.uuid4().hex[:12]}", artwork_id, order, image_url),
+                )
+        if tags is not None:
+            connection.execute("DELETE FROM artwork_tags WHERE artwork_id = ?", (artwork_id,))
+            connection.executemany(
+                "INSERT OR IGNORE INTO artwork_tags (artwork_id, tag) VALUES (?, ?)",
+                [(artwork_id, tag) for tag in tags],
+            )
+    return artwork_id
+
+
+def update_artwork(
+    artwork_id: str,
+    *,
+    status: str | None = None,
+    next_schedule: str | None = None,
+    new_fans_count: int | None = None,
+    db_path: str | None = None,
+) -> None:
+    """Update the mutable fields written by the collector."""
+    fields: dict[str, Any] = {"updated_at": _now()}
+    if status is not None:
+        fields["status"] = status
+    if next_schedule is not None or status == "COMPLETED":
+        fields["next_schedule"] = next_schedule
+    if new_fans_count is not None:
+        fields["new_fans_count"] = new_fans_count
+    assignments = ", ".join(f"{key} = ?" for key in fields)
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        connection.execute(
+            f"UPDATE artworks SET {assignments} WHERE id = ?",
+            (*fields.values(), artwork_id),
+        )
+
+
 def add_metric_snapshot(
     artwork_id: str,
     *,
@@ -129,9 +229,22 @@ def add_metric_snapshot(
     new_fans_count: int = 0,
     db_path: str | None = None,
 ) -> str:
-    snapshot_id = f"metric_{uuid.uuid4().hex[:12]}"
     init_db(db_path)
     with _connect(db_path) as connection:
+        existing = connection.execute(
+            "SELECT id FROM metric_snapshots WHERE artwork_id = ? AND stage = ?",
+            (artwork_id, stage),
+        ).fetchone()
+        if existing:
+            connection.execute(
+                """UPDATE metric_snapshots SET elapsed_seconds=?, measured_at=?,
+                impressions=?, likes=?, retweets=?, followers=?, new_fans_count=?
+                WHERE id=?""",
+                (elapsed_seconds, measured_at, impressions, likes, retweets,
+                 followers, new_fans_count, existing["id"]),
+            )
+            return existing["id"]
+        snapshot_id = f"metric_{uuid.uuid4().hex[:12]}"
         connection.execute(
             "INSERT INTO metric_snapshots (id, artwork_id, stage, elapsed_seconds, measured_at, impressions, likes, retweets, followers, new_fans_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (snapshot_id, artwork_id, stage, elapsed_seconds, measured_at, impressions, likes, retweets, followers, new_fans_count),

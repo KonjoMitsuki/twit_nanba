@@ -21,6 +21,7 @@ import sys
 from datetime import datetime, timezone
 
 from notion_client_wrapper import artworks
+from storage import app_db
 
 
 def main() -> None:
@@ -91,6 +92,18 @@ def main() -> None:
     except Exception as e:
         print(f"❌ 登録に失敗しました: {e}", file=sys.stderr)
         sys.exit(1)
+
+    try:
+        app_id = app_db.upsert_artwork(
+            tweet_id=url.rstrip("/").split("/")[-1],
+            url=url,
+            title=title,
+            posted_at=posted_at.isoformat(),
+            status="5m",
+        )
+        print(f"✅ App DB にも登録しました: {app_id}")
+    except Exception as e:
+        print(f"⚠️ App DB への登録に失敗しました（Notion 登録は成功）: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

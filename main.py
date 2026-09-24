@@ -29,7 +29,7 @@ import config
 from notion_client_wrapper import artworks, metrics_db
 from notion_client_wrapper import schedule_queue
 from processing import scheduler, new_fans
-from storage import fans_db, backup_db
+from storage import app_db, fans_db, backup_db
 from scraper.browser import create_browser_context, random_wait
 from scraper.metrics import fetch_metrics
 from scraper.fans import fetch_likers
@@ -69,6 +69,21 @@ async def process_artwork(
     current_status = artwork_info["status"]
     posted_at_str = artwork_info["posted_at"]
     current_new_fans_count = artwork_info["new_fans_count"]
+    app_artwork_id: str | None = None
+
+    # App DB の作品行を先に確保する。既存データは tweet_id / URL で UPSERT される。
+    try:
+        app_artwork_id = app_db.upsert_artwork(
+            tweet_id=url.rstrip("/").split("/")[-1],
+            url=url,
+            title=artwork_info["title"],
+            posted_at=posted_at_str,
+            status=current_status,
+            new_fans_count=current_new_fans_count,
+        )
+        logger.info("App DB 作品同期成功: %s", app_artwork_id)
+    except Exception as e:
+        logger.error("App DB 作品同期失敗: %s", e)
 
     logger.info(
         "▶ 処理開始: %s [%s] %s",
@@ -112,7 +127,21 @@ async def process_artwork(
 
                 # はじめて反応した人の数を累計で更新
                 updated_count = current_new_fans_count + inserted_count
-                artworks.update_new_fans_count(page_id, updated_count)
+                try:
+                    artworks.update_new_fans_count(page_id, updated_count)
+                    logger.info("Notion 新規反応者数更新成功: %s", page_id)
+                except Exception as e:
+                    logger.error("Notion 新規反応者数更新失敗: %s", e)
+
+                if app_artwork_id:
+                    try:
+                        app_db.update_artwork(
+                            app_artwork_id,
+                            new_fans_count=updated_count,
+                        )
+                        logger.info("App DB 新規反応者数更新成功: %s", app_artwork_id)
+                    except Exception as e:
+                        logger.error("App DB 新規反応者数更新失敗: %s", e)
 
                 logger.info(
                     "🆕 新規反応者 %d 名を登録 (累計: %d)",
@@ -163,20 +192,40 @@ async def process_artwork(
     except Exception as e:
         logger.error("スナップショット保存失敗: %s", e)
 
-    # ─── 4. 次ステージへの状態遷移 ───
-    try:
-        next_stage = scheduler.get_next_stage(current_status)
+    # Notion とは独立して App DB に保存する。
+    if app_artwork_id:
+        try:
+            measured_at = datetime.now(timezone.utc).isoformat()
+            app_db.add_metric_snapshot(
+                app_artwork_id,
+                stage=current_status,
+                elapsed_seconds=config.STAGE_MAP[current_status]["offset_sec"],
+                measured_at=measured_at,
+                impressions=metrics["impressions"],
+                likes=metrics["likes"],
+                retweets=metrics["retweets"],
+                followers=metrics.get("followers"),
+                new_fans_count=len(stage_new_fans),
+            )
+            if metrics.get("followers") is not None:
+                app_db.add_account_metric(metrics["followers"], measured_at)
+            logger.info("App DB スナップショット保存成功: artwork=%s stage=%s", app_artwork_id, current_status)
+        except Exception as e:
+            logger.error("App DB スナップショット保存失敗: %s", e)
 
+    # ─── 4. 次ステージへの状態遷移 ───
+    next_stage = scheduler.get_next_stage(current_status)
+    next_schedule = None
+    if next_stage is not None:
+        posted_at = datetime.fromisoformat(posted_at_str)
+        next_schedule = scheduler.calculate_next_schedule(posted_at, next_stage)
+
+    try:
         if next_stage is None:
             # COMPLETED
             artworks.update_status(page_id, "COMPLETED", None)
             logger.info("🏁 追跡完了: ステータスを COMPLETED に更新")
         else:
-            # 投稿日時をパース
-            posted_at = datetime.fromisoformat(posted_at_str)
-            next_schedule = scheduler.calculate_next_schedule(
-                posted_at, next_stage
-            )
             artworks.update_status(page_id, next_stage, next_schedule)
             logger.info(
                 "⏭ 次ステージ: %s (次回予定: %s)",
@@ -195,6 +244,18 @@ async def process_artwork(
         }, db_path=config.BACKUP_DB_PATH)
     except Exception as e:
         logger.error("状態遷移失敗: %s", e)
+
+    if app_artwork_id:
+        try:
+            app_db.update_artwork(
+                app_artwork_id,
+                status=next_stage or "COMPLETED",
+                next_schedule=next_schedule.isoformat() if next_schedule else None,
+                new_fans_count=current_new_fans_count + len(stage_new_fans),
+            )
+            logger.info("App DB 状態更新成功: artwork=%s", app_artwork_id)
+        except Exception as e:
+            logger.error("App DB 状態更新失敗: %s", e)
 
     return stage_new_fans
 
@@ -304,29 +365,50 @@ async def run(headless: bool = True) -> None:
                         now = datetime.now(timezone.utc)
                         hashtags = _extract_hashtags(sq_text)
 
-                        artwork_page_id = artworks.create_artwork_auto(
-                            url=tweet_url,
-                            title=sq_title or f"作品 ({tweet_url.split('/')[-1]})",
-                            posted_at=now,
-                            initial_stage="5m",
-                            image_urls=sq_images if sq_images else None,
-                            tags=hashtags if hashtags else None,
-                        )
+                        artwork_title = sq_title or f"作品 ({tweet_url.split('/')[-1]})"
+                        artwork_page_id = None
+                        try:
+                            artwork_page_id = artworks.create_artwork_auto(
+                                url=tweet_url,
+                                title=artwork_title,
+                                posted_at=now,
+                                initial_stage="5m",
+                                image_urls=sq_images if sq_images else None,
+                                tags=hashtags if hashtags else None,
+                            )
+                            logger.info("Notion 作品登録成功: %s", artwork_page_id)
+                        except Exception as e:
+                            logger.error("Notion 作品登録失敗: %s", e)
+
+                        try:
+                            app_artwork_id = app_db.upsert_artwork(
+                                tweet_id=tweet_url.rstrip("/").split("/")[-1],
+                                url=tweet_url,
+                                title=artwork_title,
+                                posted_at=now.isoformat(),
+                                status="5m",
+                                image_urls=sq_images or None,
+                                tags=hashtags or None,
+                            )
+                            logger.info("App DB 作品登録成功: %s", app_artwork_id)
+                        except Exception as e:
+                            logger.error("App DB 作品登録失敗: %s", e)
 
                         # ── 新規登録のローカルバックアップ ──
-                        backup_db.backup_artwork({
-                            "page_id": artwork_page_id,
-                            "title": sq_title or f"作品 ({tweet_url.split('/')[-1]})",
-                            "url": tweet_url,
-                            "posted_at": now.isoformat(),
-                            "status": "5m",
-                            "new_fans_count": 0,
-                        }, db_path=config.BACKUP_DB_PATH)
+                        if artwork_page_id:
+                            backup_db.backup_artwork({
+                                "page_id": artwork_page_id,
+                                "title": artwork_title,
+                                "url": tweet_url,
+                                "posted_at": now.isoformat(),
+                                "status": "5m",
+                                "new_fans_count": 0,
+                            }, db_path=config.BACKUP_DB_PATH)
 
                         logger.info(
                             "🎉 作品マスターDBに登録 → 5m 追跡開始 "
                             "(Page ID: %s)",
-                            artwork_page_id,
+                            artwork_page_id or "(Notion 保存失敗)",
                         )
                     else:
                         logger.info(

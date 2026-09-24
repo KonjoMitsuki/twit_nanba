@@ -87,6 +87,25 @@ python setup_auth.py
 
 ## 📖 使い方
 
+### Web UI と過去データ移行
+
+依存関係をインストールして API を起動します。`app.db` は起動時に自動作成されます。
+
+```bash
+pip install -r requirements.txt
+APP_DB_PATH=./app.db PYTHONPATH=. python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+
+過去の Notion データは、本番サーバーで `.env` を配置した後に次を一度実行してください。
+
+```bash
+APP_DB_PATH=./app.db PYTHONPATH=. python scripts/migrate_notion_to_app_db.py
+```
+
+出力される取得数、`*_inserted`、`*_skipped`、`errors` を確認してください。同じコマンドを再実行しても、投稿 ID と作品・ステージをキーに重複登録されません。
+
+Collector は新規作品、計測スナップショット、状態更新を Notion と App DB の双方へ保存します。片方の保存に失敗しても処理を継続し、`Notion ... 成功/失敗` と `App DB ... 成功/失敗` のログで確認できます。
+
 ### 自動検知モード（推奨）
 
 `.env` に `X_SCREEN_NAME` を設定すれば、**新しいイラストの投稿が自動で検知・登録されます**。手動での URL 登録は不要です。
