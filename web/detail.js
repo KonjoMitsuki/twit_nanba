@@ -58,6 +58,10 @@ function updateTabs() {
 
 function drawChart() {
   const values = points.map((point, index) => state.mode === 'absolute' || index === 0 ? point[state.metric] : point[state.metric] - points[index - 1][state.metric]);
+  if (state.mode === 'delta') {
+    drawDeltaBarChart(values);
+    return;
+  }
   const validValues = values.filter(value => value != null);
   const max = Math.max(...validValues, 1);
   const width = 800;
@@ -72,9 +76,28 @@ function drawChart() {
   const y = value => top + chartHeight - (value / max) * chartHeight;
   const linePoints = values.map((value, index) => value == null ? null : `${x(index)},${y(value)}`).filter(Boolean).join(' ');
   const dots = values.map((value, index) => value == null ? '' : `<circle cx="${x(index)}" cy="${y(value)}" r="4" class="chart-point"><title>${points[index].stage}: ${number(value)}</title></circle>`).join('');
-  const labels = points.map((point, index) => `<text x="${x(index)}" y="${height - 14}" class="chart-label" text-anchor="middle">${point.stage}</text>`).join('');
+  const tickCount = 4;
+  const grid = Array.from({ length: tickCount + 1 }, (_, index) => {
+    const value = max * index / tickCount;
+    const yPosition = y(value);
+    return `<line x1="${left}" y1="${yPosition}" x2="${width - right}" y2="${yPosition}" class="chart-grid"/><text x="${left - 8}" y="${yPosition + 4}" class="chart-y-label" text-anchor="end">${number(Math.round(value))}</text>`;
+  }).join('');
+  const labelStep = points.length > 8 ? Math.ceil((points.length - 1) / 7) : 1;
+  const labels = points.map((point, index) => index % labelStep === 0 || index === points.length - 1 ? `<text x="${x(index)}" y="${height - 14}" class="chart-label" text-anchor="middle">${point.stage}</text>` : '').join('');
   const latest = values.at(-1);
-  document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移"><line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polyline points="${linePoints}" class="chart-line"/>${dots}${labels}</svg><div class="chart-value">${number(latest)} <small>${state.mode === 'absolute' ? state.metric : 'since previous'}</small></div>`;
+  document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移">${grid}<line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polyline points="${linePoints}" class="chart-line"/>${dots}${labels}</svg><div class="chart-value">${number(latest)} <small>${state.mode === 'absolute' ? state.metric : 'since previous'}</small></div>`;
+}
+
+function drawDeltaBarChart(values) {
+  const validValues = values.filter(value => value != null);
+  const max = Math.max(...validValues, 1);
+  const labelStep = points.length > 8 ? Math.ceil((points.length - 1) / 7) : 1;
+  const bars = values.map((value, index) => {
+    const label = index % labelStep === 0 || index === points.length - 1 ? `<small>${points[index].stage}</small>` : '<small></small>';
+    const height = value == null ? 0 : Math.max(4, value / max * 100);
+    return `<div class="bar-wrap" title="${points[index].stage}: ${number(value)}"><div class="bar" style="height:${height}%"></div>${label}</div>`;
+  }).join('');
+  document.querySelector('#chart').innerHTML = `<div class="bar-chart delta-chart">${bars}</div><div class="chart-value">${number(values.at(-1))} <small>since previous</small></div>`;
 }
 
 load().catch(() => { document.querySelector('#detail').innerHTML = '<p class="error">作品が見つかりませんでした。</p>'; });
