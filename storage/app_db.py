@@ -283,6 +283,9 @@ def _day_delta(connection: sqlite3.Connection, day: date) -> int | None:
 
 def get_calendar(year: int, month: int, db_path: str | None = None) -> dict[str, Any]:
     start, end = _month_bounds(year, month)
+    first_day = date(year, month, 1)
+    next_month = first_day + timedelta(days=32)
+    last_day = date(next_month.year, next_month.month, 1) - timedelta(days=1)
     init_db(db_path)
     with _connect(db_path) as connection:
         rows = connection.execute(
@@ -293,12 +296,19 @@ def get_calendar(year: int, month: int, db_path: str | None = None) -> dict[str,
             FROM artworks a WHERE a.posted_at >= ? AND a.posted_at < ? ORDER BY a.posted_at""",
             (start, end),
         ).fetchall()
-        days: dict[str, dict[str, Any]] = {}
+        days = {
+            (first_day + timedelta(days=offset)).isoformat(): {
+                "date": (first_day + timedelta(days=offset)).isoformat(),
+                "followers_delta": _day_delta(connection, first_day + timedelta(days=offset)),
+                "artworks": [],
+            }
+            for offset in range(last_day.day)
+        }
         for row in rows:
             item = dict(row)
             posted_at = datetime.fromisoformat(item["posted_at"]).astimezone(JST)
             day = posted_at.date().isoformat()
-            days.setdefault(day, {"date": day, "followers_delta": _day_delta(connection, date.fromisoformat(day)), "artworks": []})["artworks"].append({
+            days[day]["artworks"].append({
                 "id": item["id"], "title": item["title"], "posted_at": item["posted_at"], "image_url": item["image_url"],
                 "likes": item["likes"], "retweets": item["retweets"], "impressions": item["impressions"], "status": item["status"],
             })
@@ -308,12 +318,12 @@ def get_calendar(year: int, month: int, db_path: str | None = None) -> dict[str,
             WHERE a.posted_at >= ? AND a.posted_at < ? AND m.id IN (SELECT id FROM metric_snapshots GROUP BY artwork_id HAVING elapsed_seconds = MAX(elapsed_seconds))""",
             (start, end),
         ).fetchone()
-        latest_account = connection.execute("SELECT followers FROM account_metrics ORDER BY measured_at DESC LIMIT 1").fetchone()
+        latest_account = connection.execute("SELECT followers FROM account_metrics WHERE measured_at < ? ORDER BY measured_at DESC LIMIT 1", (end,)).fetchone()
         first_account = connection.execute("SELECT followers FROM account_metrics WHERE measured_at < ? ORDER BY measured_at DESC LIMIT 1", (start,)).fetchone()
     return {
         "year": year, "month": month,
         "summary": {"followers": latest_account["followers"] if latest_account else None, "followers_delta": (latest_account["followers"] - first_account["followers"]) if latest_account and first_account else None, "posts": len(rows), "likes": month_rows["likes"], "retweets": month_rows["retweets"]},
-        "days": sorted(days.values(), key=lambda item: item["date"]),
+        "days": list(days.values()),
     }
 
 
