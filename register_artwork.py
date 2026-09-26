@@ -38,8 +38,12 @@ async def fetch_tweet_info(url: str) -> dict:
     """認証済みXページから投稿画像と投稿日時を取得する。"""
     async with create_browser_context(headless=True) as (_context, page):
         await page.goto(url, wait_until="domcontentloaded")
+        await page.wait_for_selector(
+            "article[data-testid='tweet']",
+            state="visible",
+            timeout=30000,
+        )
         tweet = page.locator("article[data-testid='tweet']").first
-        await tweet.wait_for(state="visible", timeout=30000)
         tweet_info = await _extract_tweet_info(tweet)
         if tweet_info is None:
             raise RuntimeError("投稿情報を取得できませんでした。URLとXのログイン状態を確認してください。")
