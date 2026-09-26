@@ -18,9 +18,13 @@ register_artwork.py — 新規作品登録 CLI
 
 import argparse
 import asyncio
+import re
 import sys
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit, urlunsplit
+
+import httpx
 
 from notion_client_wrapper import artworks
 from scraper.browser import create_browser_context
@@ -36,18 +40,54 @@ def normalize_tweet_url(url: str) -> str:
 
 async def fetch_tweet_info(url: str) -> dict:
     """認証済みXページから投稿画像と投稿日時を取得する。"""
-    async with create_browser_context(headless=True) as (_context, page):
-        await page.goto(url, wait_until="domcontentloaded")
-        await page.wait_for_selector(
-            "article[data-testid='tweet']",
-            state="visible",
-            timeout=30000,
-        )
-        tweet = page.locator("article[data-testid='tweet']").first
-        tweet_info = await _extract_tweet_info(tweet)
-        if tweet_info is None:
-            raise RuntimeError("投稿情報を取得できませんでした。URLとXのログイン状態を確認してください。")
-        return tweet_info
+    try:
+        async with create_browser_context(headless=True) as (_context, page):
+            await page.goto(url, wait_until="domcontentloaded")
+            await page.wait_for_selector(
+                "article[data-testid='tweet']",
+                state="visible",
+                timeout=30000,
+            )
+            tweet = page.locator("article[data-testid='tweet']").first
+            tweet_info = await _extract_tweet_info(tweet)
+            if tweet_info is not None:
+                return tweet_info
+    except Exception:
+        pass
+
+    # Xのログイン画面・レート制限時は、公開シンジケーション情報を試す。
+    return fetch_syndicated_tweet_info(url)
+
+
+def fetch_syndicated_tweet_info(url: str) -> dict:
+    """投稿IDから公開情報を取得し、手動登録に必要な画像を抽出する。"""
+    match = re.search(r"/status/(\d+)", urlsplit(url).path)
+    if match is None:
+        raise RuntimeError("投稿IDをURLから取得できませんでした")
+
+    tweet_id = match.group(1)
+    response = httpx.get(
+        "https://cdn.syndication.twimg.com/tweet-result",
+        params={"id": tweet_id, "lang": "ja"},
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=15,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    image_urls = [
+        media["media_url_https"]
+        for media in payload.get("mediaDetails", [])
+        if media.get("type") == "photo" and media.get("media_url_https")
+    ]
+    post_time = payload.get("created_at")
+    posted_at = parsedate_to_datetime(post_time) if post_time else None
+    return {
+        "tweet_id": tweet_id,
+        "tweet_url": normalize_tweet_url(url),
+        "post_time_iso": posted_at.isoformat() if posted_at else None,
+        "image_urls": image_urls,
+        "tags": re.findall(r"#([\wぁ-んァ-ヶ一-龯々ー]+)", payload.get("text", "")),
+    }
 
 
 def main() -> None:
