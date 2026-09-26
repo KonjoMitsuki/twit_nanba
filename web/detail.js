@@ -57,8 +57,9 @@ function updateTabs() {
   document.querySelectorAll('[data-mode]').forEach(button => button.classList.toggle('active', button.dataset.mode === state.mode));
 }
 
-function getVisibleLabelIndexes(values, candidates, thresholdIndexes, xPosition, yPosition) {
+function getVisibleLabelIndexes(values, candidates, thresholdIndexes, xPosition, yPosition, scale = 1) {
   const latestIndex = values.findLastIndex(value => value != null);
+  const fontSize = window.matchMedia('(max-width: 700px)').matches ? 10 : 12;
   const ranked = [...candidates].sort((a, b) => {
     const priorityA = a === latestIndex ? 3 : thresholdIndexes.has(a) ? 2 : 1;
     const priorityB = b === latestIndex ? 3 : thresholdIndexes.has(b) ? 2 : 1;
@@ -66,9 +67,10 @@ function getVisibleLabelIndexes(values, candidates, thresholdIndexes, xPosition,
   });
   const visible = [];
   ranked.forEach(index => {
-    const fontSize = 12;
-    const labelWidth = Math.max(20, String(number(values[index])).length * 7.2 + 8);
-    const box = { index, left: xPosition(index) - labelWidth / 2, right: xPosition(index) + labelWidth / 2, top: yPosition(index) - fontSize - 4, bottom: yPosition(index) + 3 };
+    const labelWidth = Math.max(20, String(number(values[index])).length * fontSize * 0.6 + 8);
+    const centerX = xPosition(index) * scale;
+    const centerY = yPosition(index) * scale;
+    const box = { index, left: centerX - labelWidth / 2, right: centerX + labelWidth / 2, top: centerY - fontSize - 4, bottom: centerY + 3 };
     if (!visible.some(other => box.left < other.right + 5 && box.right > other.left - 5 && box.top < other.bottom + 3 && box.bottom > other.top - 3)) visible.push(box);
   });
   return new Set(visible.map(box => box.index).filter(index => index != null));
@@ -115,9 +117,11 @@ function drawChart() {
   const areaPoints = validPoints.length ? `${validPoints[0].split(',')[0]},${top + chartHeight} ${validPoints.join(' ')} ${validPoints.at(-1).split(',')[0]},${top + chartHeight}` : '';
   const labelIndexes = new Set();
   const thresholdIndexes = new Set();
+  const chartWidthPx = document.querySelector('#chart').clientWidth || width;
+  const xScale = chartWidthPx / width;
   let nextThreshold = 50;
   values.forEach((value, index) => {
-    if (value == null) return;
+    if (value == null || value === 0 || (index > 0 && value === values[index - 1])) return;
     if (value >= nextThreshold) {
       thresholdIndexes.add(index);
       nextThreshold += 50;
@@ -125,8 +129,8 @@ function drawChart() {
     labelIndexes.add(index);
   });
   const latestIndex = values.findLastIndex(value => value != null);
-  if (latestIndex >= 0) labelIndexes.add(latestIndex);
-  const visibleLabelIndexes = getVisibleLabelIndexes(values, labelIndexes, thresholdIndexes, x, index => Math.max(12, y(values[index]) - 9));
+  if (latestIndex >= 0 && values[latestIndex] !== 0 && (latestIndex === 0 || values[latestIndex] !== values[latestIndex - 1])) labelIndexes.add(latestIndex);
+  const visibleLabelIndexes = getVisibleLabelIndexes(values, labelIndexes, thresholdIndexes, x, index => Math.max(12, y(values[index]) - 9), xScale);
   const valueLabels = values.map((value, index) => value == null || !visibleLabelIndexes.has(index) ? '' : `<text x="${x(index)}" y="${Math.max(12, y(value) - 9)}" class="chart-value-label${thresholdIndexes.has(index) ? ' chart-threshold-label' : ''}" text-anchor="middle">${number(value)}</text>`).join('');
   const tickCount = Math.min(4, Math.max(1, Math.floor(max)));
   const grid = Array.from({ length: tickCount + 1 }, (_, index) => {
@@ -134,8 +138,6 @@ function drawChart() {
     const yPosition = y(value);
     return `<line x1="${left}" y1="${yPosition}" x2="${width - right}" y2="${yPosition}" class="chart-grid"/><text x="${left - 8}" y="${yPosition + 4}" class="chart-y-label" text-anchor="end">${number(Math.round(value))}</text>`;
   }).join('');
-  const chartWidthPx = document.querySelector('#chart').clientWidth || width;
-  const xScale = chartWidthPx / width;
   const visibleXIndexes = getVisibleXAxisIndexes(points.map(point => point.stage), index => x(index) * xScale);
   const labels = points.map((point, index) => visibleXIndexes.has(index) ? `<text x="${x(index)}" y="${height - 14}" class="chart-label" text-anchor="middle">${point.stage}</text>` : '').join('');
   const latest = latestIndex >= 0 ? values[latestIndex] : null;
@@ -149,7 +151,7 @@ function drawDeltaBarChart(values) {
   const thresholdIndexes = new Set();
   let nextThreshold = 50;
   values.forEach((value, index) => {
-    if (value == null) return;
+    if (value == null || value === 0 || (index > 0 && value === values[index - 1])) return;
     if (value >= nextThreshold) {
       thresholdIndexes.add(index);
       nextThreshold += 50;
@@ -157,7 +159,7 @@ function drawDeltaBarChart(values) {
     labelIndexes.add(index);
   });
   const latestIndex = values.findLastIndex(value => value != null);
-  if (latestIndex >= 0) labelIndexes.add(latestIndex);
+  if (latestIndex >= 0 && values[latestIndex] !== 0 && (latestIndex === 0 || values[latestIndex] !== values[latestIndex - 1])) labelIndexes.add(latestIndex);
   const chartWidth = document.querySelector('#chart').clientWidth || 800;
   const plotLeft = 42;
   const plotWidth = Math.max(1, chartWidth - plotLeft - 4);
