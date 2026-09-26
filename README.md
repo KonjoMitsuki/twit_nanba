@@ -129,6 +129,10 @@ python register_artwork.py "https://x.com/user/status/123456789" \
 python register_artwork.py "https://x.com/user/status/123456789"
 ```
 
+手動登録では、保存済みの X 認証セッションを使って投稿画像とハッシュタグも取得します。
+既に画像なしで登録済みの投稿を補修する場合も、同じ URL でこのコマンドを再実行してください。
+同じ URL の Notion ページは重複登録されません。
+
 ### 計測の実行
 
 ```bash

@@ -17,11 +17,26 @@ register_artwork.py — 新規作品登録 CLI
 """
 
 import argparse
+import asyncio
 import sys
 from datetime import datetime, timezone
 
 from notion_client_wrapper import artworks
+from scraper.browser import create_browser_context
+from scraper.auto_detect import _extract_tweet_info
 from storage import app_db
+
+
+async def fetch_tweet_info(url: str) -> dict:
+    """認証済みXページから投稿画像と投稿日時を取得する。"""
+    async with create_browser_context(headless=True) as (_context, page):
+        await page.goto(url, wait_until="domcontentloaded")
+        tweet = page.locator("article[data-testid='tweet']").first
+        await tweet.wait_for(state="visible", timeout=30000)
+        tweet_info = await _extract_tweet_info(tweet)
+        if tweet_info is None:
+            raise RuntimeError("投稿情報を取得できませんでした。URLとXのログイン状態を確認してください。")
+        return tweet_info
 
 
 def main() -> None:
@@ -76,14 +91,37 @@ def main() -> None:
     if posted_at.tzinfo is None:
         posted_at = posted_at.replace(tzinfo=timezone.utc)
 
-    # Notion に登録
+    # Web UIでも画像を表示できるよう、認証済みXページから画像URLを取得する。
     try:
-        page_id = artworks.create_artwork(
-            url=url,
-            title=title,
-            posted_at=posted_at,
-        )
-        print(f"✅ 作品を登録しました。")
+        tweet_info = asyncio.run(fetch_tweet_info(url))
+        image_urls = tweet_info.get("image_urls", [])
+        tags = tweet_info.get("tags", [])
+        if not args.posted_at and tweet_info.get("post_time_iso"):
+            posted_at = datetime.fromisoformat(
+                tweet_info["post_time_iso"].replace("Z", "+00:00")
+            )
+            if posted_at.tzinfo is None:
+                posted_at = posted_at.replace(tzinfo=timezone.utc)
+    except Exception as e:
+        print(f"⚠️ Xページから画像を取得できませんでした: {e}", file=sys.stderr)
+        image_urls = []
+        tags = []
+
+    # Notion に登録（同じURLの再実行では重複ページを作らない）
+    try:
+        existing_page = artworks.find_by_tweet_url(url)
+        if existing_page:
+            page_id = existing_page["id"]
+            print("ℹ️ Notionには既に登録済みです。重複登録をスキップしました。")
+        else:
+            page_id = artworks.create_artwork(
+                url=url,
+                title=title,
+                posted_at=posted_at,
+                image_urls=image_urls,
+                tags=tags,
+            )
+            print("✅ 作品を登録しました。")
         print(f"   タイトル: {title}")
         print(f"   URL: {url}")
         print(f"   投稿日時: {posted_at.isoformat()}")
@@ -100,6 +138,8 @@ def main() -> None:
             title=title,
             posted_at=posted_at.isoformat(),
             status="5m",
+            image_urls=image_urls,
+            tags=tags,
         )
         print(f"✅ App DB にも登録しました: {app_id}")
     except Exception as e:
