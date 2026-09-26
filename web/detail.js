@@ -15,6 +15,7 @@ async function load() {
   renderCarousel();
   document.querySelectorAll('[data-metric]').forEach(button => button.onclick = () => { state.metric = button.dataset.metric; updateTabs(); drawChart(); });
   document.querySelectorAll('[data-mode]').forEach(button => button.onclick = () => { state.mode = button.dataset.mode; updateTabs(); drawChart(); });
+  window.addEventListener('resize', drawChart);
   document.addEventListener('keydown', handleKeydown);
   drawChart();
 }
@@ -56,6 +57,23 @@ function updateTabs() {
   document.querySelectorAll('[data-mode]').forEach(button => button.classList.toggle('active', button.dataset.mode === state.mode));
 }
 
+function getVisibleLabelIndexes(values, candidates, thresholdIndexes, xPosition, yPosition) {
+  const latestIndex = values.findLastIndex(value => value != null);
+  const ranked = [...candidates].sort((a, b) => {
+    const priorityA = a === latestIndex ? 3 : thresholdIndexes.has(a) ? 2 : 1;
+    const priorityB = b === latestIndex ? 3 : thresholdIndexes.has(b) ? 2 : 1;
+    return priorityB - priorityA || a - b;
+  });
+  const visible = [];
+  ranked.forEach(index => {
+    const fontSize = 12;
+    const labelWidth = Math.max(20, String(number(values[index])).length * 7.2 + 8);
+    const box = { index, left: xPosition(index) - labelWidth / 2, right: xPosition(index) + labelWidth / 2, top: yPosition(index) - fontSize - 4, bottom: yPosition(index) + 3 };
+    if (!visible.some(other => box.left < other.right + 5 && box.right > other.left - 5 && box.top < other.bottom + 3 && box.bottom > other.top - 3)) visible.push(box);
+  });
+  return new Set(visible.map(box => box.index).filter(index => index != null));
+}
+
 function drawChart() {
   const values = points.map((point, index) => state.mode === 'absolute' || index === 0 ? point[state.metric] : point[state.metric] - points[index - 1][state.metric]);
   if (state.mode === 'delta') {
@@ -75,7 +93,26 @@ function drawChart() {
   const x = index => points.length === 1 ? left + chartWidth / 2 : left + (index / (points.length - 1)) * chartWidth;
   const y = value => top + chartHeight - (value / max) * chartHeight;
   const linePoints = values.map((value, index) => value == null ? null : `${x(index)},${y(value)}`).filter(Boolean).join(' ');
-  const dots = values.map((value, index) => value == null ? '' : `<circle cx="${x(index)}" cy="${y(value)}" r="4" class="chart-point"><title>${points[index].stage}: ${number(value)}</title></circle>`).join('');
+  const validPoints = values.map((value, index) => value == null ? null : `${x(index)},${y(value)}`).filter(Boolean);
+  const areaPoints = validPoints.length ? `${validPoints[0].split(',')[0]},${top + chartHeight} ${validPoints.join(' ')} ${validPoints.at(-1).split(',')[0]},${top + chartHeight}` : '';
+  const labelIndexes = new Set();
+  const thresholdIndexes = new Set();
+  let nextThreshold = 50;
+  values.forEach((value, index) => {
+    if (value != null && value >= nextThreshold) {
+      labelIndexes.add(index);
+      thresholdIndexes.add(index);
+      nextThreshold += 50;
+    }
+  });
+  values.forEach((value, index) => {
+    const nearThreshold = [...thresholdIndexes].some(thresholdIndex => Math.abs(index - thresholdIndex) <= 3);
+    if (value != null && index % 5 === 0 && !nearThreshold) labelIndexes.add(index);
+  });
+  const latestIndex = values.findLastIndex(value => value != null);
+  if (latestIndex >= 0) labelIndexes.add(latestIndex);
+  const visibleLabelIndexes = getVisibleLabelIndexes(values, labelIndexes, thresholdIndexes, x, index => Math.max(12, y(values[index]) - 9));
+  const valueLabels = values.map((value, index) => value == null || !visibleLabelIndexes.has(index) ? '' : `<text x="${x(index)}" y="${Math.max(12, y(value) - 9)}" class="chart-value-label${thresholdIndexes.has(index) ? ' chart-threshold-label' : ''}" text-anchor="middle">${number(value)}</text>`).join('');
   const tickCount = 4;
   const grid = Array.from({ length: tickCount + 1 }, (_, index) => {
     const value = max * index / tickCount;
@@ -84,20 +121,42 @@ function drawChart() {
   }).join('');
   const labelStep = points.length > 8 ? Math.ceil((points.length - 1) / 7) : 1;
   const labels = points.map((point, index) => index % labelStep === 0 || index === points.length - 1 ? `<text x="${x(index)}" y="${height - 14}" class="chart-label" text-anchor="middle">${point.stage}</text>` : '').join('');
-  const latest = values.at(-1);
-  document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移">${grid}<line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polyline points="${linePoints}" class="chart-line"/>${dots}${labels}</svg><div class="chart-value">${number(latest)} <small>${state.mode === 'absolute' ? state.metric : 'since previous'}</small></div>`;
+  const latest = latestIndex >= 0 ? values[latestIndex] : null;
+  document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移">${grid}<line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polygon points="${areaPoints}" class="chart-area"/><polyline points="${linePoints}" class="chart-line"/>${valueLabels}${labels}</svg><div class="chart-legend"><span class="chart-legend-line"></span><span>経過時間</span></div>`;
 }
 
 function drawDeltaBarChart(values) {
   const validValues = values.filter(value => value != null);
   const max = Math.max(...validValues, 1);
-  const labelStep = points.length > 8 ? Math.ceil((points.length - 1) / 7) : 1;
+  const labelIndexes = new Set();
+  const thresholdIndexes = new Set();
+  let nextThreshold = 50;
+  values.forEach((value, index) => {
+    if (value != null && value >= nextThreshold) {
+      labelIndexes.add(index);
+      thresholdIndexes.add(index);
+      nextThreshold += 50;
+    }
+  });
+  values.forEach((value, index) => {
+    const nearThreshold = [...thresholdIndexes].some(thresholdIndex => Math.abs(index - thresholdIndex) <= 3);
+    if (value != null && index % 5 === 0 && !nearThreshold) labelIndexes.add(index);
+  });
+  const latestIndex = values.findLastIndex(value => value != null);
+  if (latestIndex >= 0) labelIndexes.add(latestIndex);
+  const chartWidth = document.querySelector('#chart').clientWidth || 800;
+  const plotLeft = 42;
+  const plotWidth = Math.max(1, chartWidth - plotLeft - 4);
+  const plotHeight = 238;
+  const visibleLabelIndexes = getVisibleLabelIndexes(values, labelIndexes, thresholdIndexes, index => plotLeft + ((index + 0.5) / values.length) * plotWidth, index => 10 + plotHeight - (values[index] == null ? 0 : Math.max(4, values[index] / max * 100) / 100 * plotHeight));
   const bars = values.map((value, index) => {
-    const label = index % labelStep === 0 || index === points.length - 1 ? `<small>${points[index].stage}</small>` : '<small></small>';
+    const valueLabel = visibleLabelIndexes.has(index) ? `<small class="bar-value-label ${thresholdIndexes.has(index) ? 'chart-threshold-label' : ''}">${number(value)}</small>` : '<small class="bar-value-label"></small>';
+    const xLabel = index % 5 === 0 || index === values.length - 1 ? `<small class="bar-x-label">${points[index].stage}</small>` : '<small class="bar-x-label"></small>';
     const height = value == null ? 0 : Math.max(4, value / max * 100);
-    return `<div class="bar-wrap" title="${points[index].stage}: ${number(value)}"><div class="bar" style="height:${height}%"></div>${label}</div>`;
+    return `<div class="bar-wrap" title="${points[index].stage}: ${number(value)}">${valueLabel}<div class="bar" style="height:${height}%"></div>${xLabel}</div>`;
   }).join('');
-  document.querySelector('#chart').innerHTML = `<div class="bar-chart delta-chart">${bars}</div><div class="chart-value">${number(values.at(-1))} <small>since previous</small></div>`;
+  const yLabels = Array.from({ length: 5 }, (_, index) => `<span>${number(Math.round(max * (4 - index) / 4))}</span>`).join('');
+  document.querySelector('#chart').innerHTML = `<div class="bar-chart delta-chart"><div class="bar-y-labels">${yLabels}</div><div class="bar-plot">${bars}</div></div><div class="chart-value">${number(latestIndex >= 0 ? values[latestIndex] : null)} <small>since previous</small></div>`;
 }
 
 load().catch(() => { document.querySelector('#detail').innerHTML = '<p class="error">作品が見つかりませんでした。</p>'; });
