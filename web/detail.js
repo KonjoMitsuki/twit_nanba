@@ -129,7 +129,6 @@ function drawChart() {
     labelIndexes.add(index);
   });
   const latestIndex = values.findLastIndex(value => value != null);
-  if (latestIndex >= 0 && values[latestIndex] !== 0 && (latestIndex === 0 || values[latestIndex] !== values[latestIndex - 1])) labelIndexes.add(latestIndex);
   const visibleLabelIndexes = getVisibleLabelIndexes(values, labelIndexes, thresholdIndexes, x, index => Math.max(12, y(values[index]) - 9), xScale);
   const valueLabels = values.map((value, index) => value == null || !visibleLabelIndexes.has(index) ? '' : `<text x="${x(index)}" y="${Math.max(12, y(value) - 9)}" class="chart-value-label${thresholdIndexes.has(index) ? ' chart-threshold-label' : ''}" text-anchor="middle">${number(value)}</text>`).join('');
   const tickCount = Math.min(4, Math.max(1, Math.floor(max)));
@@ -159,7 +158,6 @@ function drawDeltaBarChart(values) {
     labelIndexes.add(index);
   });
   const latestIndex = values.findLastIndex(value => value != null);
-  if (latestIndex >= 0 && values[latestIndex] !== 0 && (latestIndex === 0 || values[latestIndex] !== values[latestIndex - 1])) labelIndexes.add(latestIndex);
   const chartWidth = document.querySelector('#chart').clientWidth || 800;
   const plotLeft = 42;
   const plotWidth = Math.max(1, chartWidth - plotLeft - 4);
