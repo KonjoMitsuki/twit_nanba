@@ -20,11 +20,18 @@ import argparse
 import asyncio
 import sys
 from datetime import datetime, timezone
+from urllib.parse import urlsplit, urlunsplit
 
 from notion_client_wrapper import artworks
 from scraper.browser import create_browser_context
 from scraper.auto_detect import _extract_tweet_info
 from storage import app_db
+
+
+def normalize_tweet_url(url: str) -> str:
+    """X投稿URLからクエリとフラグメントを除いた正規URLを返す。"""
+    parsed = urlsplit(url.strip())
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
 
 
 async def fetch_tweet_info(url: str) -> dict:
@@ -64,7 +71,8 @@ def main() -> None:
     args = parser.parse_args()
 
     # URL バリデーション
-    url: str = args.url
+    original_url: str = args.url.strip()
+    url: str = normalize_tweet_url(original_url)
     if "status/" not in url:
         print("エラー: 有効なツイートURLを指定してください。", file=sys.stderr)
         print("例: https://x.com/user/status/123456789", file=sys.stderr)
@@ -110,6 +118,8 @@ def main() -> None:
     # Notion に登録（同じURLの再実行では重複ページを作らない）
     try:
         existing_page = artworks.find_by_tweet_url(url)
+        if existing_page is None and original_url != url:
+            existing_page = artworks.find_by_tweet_url(original_url)
         if existing_page:
             page_id = existing_page["id"]
             print("ℹ️ Notionには既に登録済みです。重複登録をスキップしました。")

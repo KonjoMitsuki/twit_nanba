@@ -156,8 +156,8 @@ def upsert_artwork(
     init_db(db_path)
     with _connect(db_path) as connection:
         existing = connection.execute(
-            "SELECT id FROM artworks WHERE tweet_id = ? OR url = ? LIMIT 1",
-            (tweet_id, url),
+            "SELECT id FROM artworks WHERE tweet_id = ? OR tweet_id LIKE ? OR url = ? LIMIT 1",
+            (tweet_id, f"{tweet_id}?%", url),
         ).fetchone()
         artwork_id = existing["id"] if existing else f"art_{tweet_id}"
         now = _now()
