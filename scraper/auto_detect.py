@@ -365,9 +365,8 @@ async def check_new_art_post(
         # 画像が含まれていないツイートをスキップ
         if not await _has_image(tweet):
             logger.debug("📝 画像なしツイートをスキップ (index=%d)", i)
-            # 画像なしの最新オリジナルツイート → これ以降は古いので終了
-            save_last_check_time()
-            return False
+            # 投稿カードの並びや遅延読み込みで画像投稿が後続に現れるため、走査を継続
+            continue
 
         # ─── 画像付きオリジナルツイートを発見 ───
         tweet_info = await _extract_tweet_info(tweet)
@@ -390,8 +389,7 @@ async def check_new_art_post(
         # Notion DB と照合（URL ベースで重複チェック）
         if artworks.find_by_tweet_url(tweet_url):
             logger.info("✅ 登録済み: %s — スキップ", tweet_id)
-            save_last_check_time()
-            return False
+            continue
 
         # ─── 未登録 → 自動登録 ───
         initial_stage = calculate_initial_stage(post_time_iso)
