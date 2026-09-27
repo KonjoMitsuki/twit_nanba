@@ -33,4 +33,4 @@ Thumbs.db
 
 # log
 *.log
-cron.logj
+cron.logj.process.lock
