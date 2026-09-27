@@ -38,6 +38,13 @@ def normalize_tweet_url(url: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
 
 
+def tweet_id_to_posted_at(tweet_id: str) -> datetime:
+    """XのSnowflake投稿IDから投稿日時をUTCで復元する。"""
+    twitter_epoch_ms = 1288834974657
+    timestamp_ms = (int(tweet_id) >> 22) + twitter_epoch_ms
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+
+
 async def fetch_tweet_info(url: str) -> dict:
     """認証済みXページから投稿画像と投稿日時を取得する。"""
     try:
@@ -147,7 +154,7 @@ def main() -> None:
             print("例: 2026-08-18T21:00:00+09:00", file=sys.stderr)
             sys.exit(1)
     else:
-        posted_at = datetime.now(timezone.utc)
+        posted_at = tweet_id_to_posted_at(tweet_id)
 
     # タイムゾーン情報がなければ UTC として扱う
     if posted_at.tzinfo is None:
