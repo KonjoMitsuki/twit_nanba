@@ -43,4 +43,41 @@ function renderCalendar(data) {
 document.querySelector('#prev-month').onclick = () => { state.date.setMonth(state.date.getMonth() - 1); loadCalendar(); };
 document.querySelector('#next-month').onclick = () => { state.date.setMonth(state.date.getMonth() + 1); loadCalendar(); };
 document.querySelector('#today').onclick = () => { state.date = new Date(); loadCalendar(); };
+const patrolBtn = document.querySelector('#patrol-now');
+
+patrolBtn.onclick = async () => {
+  patrolBtn.disabled = true;
+  patrolBtn.textContent = '巡回中…';
+  try {
+    const response = await fetch('/api/detect/trigger', { method: 'POST' });
+    if (!response.ok) {
+      const error = await response.json();
+      alert(error.detail);
+      patrolBtn.textContent = '🔍 新着チェック';
+      patrolBtn.disabled = false;
+      return;
+    }
+
+    const poll = setInterval(async () => {
+      try {
+        const status = await fetch('/api/detect/status').then(result => result.json());
+        if (!status.running) {
+          clearInterval(poll);
+          patrolBtn.textContent = '🔍 新着チェック';
+          patrolBtn.disabled = false;
+          location.reload();
+        }
+      } catch (error) {
+        clearInterval(poll);
+        patrolBtn.textContent = '🔍 新着チェック';
+        patrolBtn.disabled = false;
+        console.error(error);
+      }
+    }, 3000);
+  } catch (error) {
+    patrolBtn.textContent = '🔍 新着チェック';
+    patrolBtn.disabled = false;
+    console.error(error);
+  }
+};
 loadCalendar().catch(error => { document.querySelector('#calendar').innerHTML = `<p class="error">データを読み込めませんでした。API が起動しているか確認してください。</p>`; console.error(error); });
