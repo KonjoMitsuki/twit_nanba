@@ -2,7 +2,7 @@
 register_artwork.py — 新規作品登録 CLI
 
 ツイート URL を指定して作品マスターDB に新規エントリを作成します。
-初回ステータスは "5m"、次回予定は posted_at + 5分に設定されます。
+初回ステータスは投稿からの経過時間に応じて決まり、次回予定もそのステージに合わせて設定されます。
 
 使い方:
     python register_artwork.py <TWEET_URL> [--title TITLE] [--posted-at ISO_DATETIME]
@@ -28,8 +28,8 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 
 from notion_client_wrapper import artworks
+from scraper.auto_detect import _extract_tweet_info, calculate_initial_stage
 from scraper.browser import create_browser_context
-from scraper.auto_detect import _extract_tweet_info
 from storage import app_db
 
 
@@ -187,6 +187,8 @@ def main() -> None:
         image_urls = []
         tags = []
 
+    initial_stage = calculate_initial_stage(posted_at.isoformat())
+
     # Notion に登録（同じURLの再実行では重複ページを作らない）
     try:
         existing_page = artworks.find_by_tweet_url(url)
@@ -196,10 +198,11 @@ def main() -> None:
             page_id = existing_page["id"]
             print("ℹ️ Notionには既に登録済みです。重複登録をスキップしました。")
         else:
-            page_id = artworks.create_artwork(
+            page_id = artworks.create_artwork_auto(
                 url=url,
                 title=title,
                 posted_at=posted_at,
+                initial_stage=initial_stage,
                 image_urls=image_urls,
                 tags=tags,
             )
@@ -208,7 +211,7 @@ def main() -> None:
         print(f"   URL: {url}")
         print(f"   投稿日時: {posted_at.isoformat()}")
         print(f"   Page ID: {page_id}")
-        print(f"   ステータス: 5m（初回計測待ち）")
+        print(f"   ステータス: {initial_stage}（初回計測待ち）")
     except Exception as e:
         print(f"❌ 登録に失敗しました: {e}", file=sys.stderr)
         sys.exit(1)
@@ -219,7 +222,7 @@ def main() -> None:
             url=url,
             title=title,
             posted_at=posted_at.isoformat(),
-            status="5m",
+            status=initial_stage,
             image_urls=image_urls,
             tags=tags,
         )
