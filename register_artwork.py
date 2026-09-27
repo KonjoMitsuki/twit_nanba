@@ -18,6 +18,7 @@ register_artwork.py — 新規作品登録 CLI
 
 import argparse
 import asyncio
+import math
 import re
 import sys
 from datetime import datetime, timezone
@@ -76,9 +77,14 @@ def fetch_syndicated_tweet_info(url: str) -> dict:
         raise RuntimeError("投稿IDをURLから取得できませんでした")
 
     tweet_id = match.group(1)
+    syndication_token = float(tweet_id) / 1e15 * math.pi
     response = httpx.get(
         "https://cdn.syndication.twimg.com/tweet-result",
-        params={"id": tweet_id, "lang": "ja"},
+        params={
+            "id": tweet_id,
+            "lang": "ja",
+            "token": syndication_token,
+        },
         headers={"User-Agent": "Mozilla/5.0"},
         timeout=15,
     )
@@ -90,7 +96,12 @@ def fetch_syndicated_tweet_info(url: str) -> dict:
         if media.get("type") == "photo" and media.get("media_url_https")
     ]
     post_time = payload.get("created_at")
-    posted_at = parsedate_to_datetime(post_time) if post_time else None
+    posted_at = None
+    if post_time:
+        try:
+            posted_at = datetime.fromisoformat(post_time.replace("Z", "+00:00"))
+        except ValueError:
+            posted_at = parsedate_to_datetime(post_time)
     return {
         "tweet_id": tweet_id,
         "tweet_url": normalize_tweet_url(url),
