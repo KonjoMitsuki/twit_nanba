@@ -268,7 +268,10 @@ async def _extract_tweet_info(tweet_element) -> dict | None:
         if not tweet_url or "/status/" not in tweet_url:
             return None
 
-        tweet_id = tweet_url.split("/")[-1]
+        tweet_id_match = re.search(r"/status/(\d+)", tweet_url)
+        if tweet_id_match is None:
+            return None
+        tweet_id = tweet_id_match.group(1)
         post_time_iso = await time_element.get_attribute("datetime")
 
         image_urls = []

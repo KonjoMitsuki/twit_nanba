@@ -125,6 +125,13 @@ def main() -> None:
         print("例: https://x.com/user/status/123456789", file=sys.stderr)
         sys.exit(1)
 
+    tweet_id_match = re.search(r"/status/(\d+)", urlsplit(url).path)
+    tweet_id = (
+        tweet_id_match.group(1)
+        if tweet_id_match
+        else url.rstrip("/").split("/")[-1]
+    )
+
     # タイトル
     title: str = args.title or f"作品 ({url.split('/')[-1]})"
 
@@ -190,7 +197,7 @@ def main() -> None:
 
     try:
         app_id = app_db.upsert_artwork(
-            tweet_id=url.rstrip("/").split("/")[-1],
+            tweet_id=tweet_id,
             url=url,
             title=title,
             posted_at=posted_at.isoformat(),
