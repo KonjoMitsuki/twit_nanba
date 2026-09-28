@@ -236,11 +236,11 @@ async def fetch_metrics(page: Page, tweet_url: str) -> dict[str, Any]:
     Raises:
         TimeoutError: GraphQL レスポンスが制限時間内に取得できなかった場合。
     """
-    metrics_future: asyncio.Future[dict[str, Any]] = asyncio.get_event_loop().create_future()
+    metrics_future: asyncio.Future[dict[str, Any]] | None = None
 
     async def _handle_response(response: Response) -> None:
         """GraphQL レスポンスのハンドラ。"""
-        if metrics_future.done():
+        if metrics_future is None or metrics_future.done():
             return
 
         url = response.url
@@ -275,22 +275,36 @@ async def fetch_metrics(page: Page, tweet_url: str) -> dict[str, Any]:
     page.on("response", _handle_response)
 
     try:
-        # ツイートページへ遷移
-        await page.goto(tweet_url, wait_until="domcontentloaded")
-
-        # GraphQL レスポンスを待機（タイムアウト付き）
-        timeout_sec = config.GRAPHQL_TIMEOUT_SEC
-        metrics = await asyncio.wait_for(
-            metrics_future,
-            timeout=timeout_sec,
+        timeouts = (
+            config.GRAPHQL_TIMEOUT_SEC,
+            config.GRAPHQL_RETRY_TIMEOUT_SEC,
         )
-        return metrics
+        for attempt, timeout_sec in enumerate(timeouts, start=1):
+            metrics_future = asyncio.get_event_loop().create_future()
 
-    except asyncio.TimeoutError:
-        raise TimeoutError(
-            f"GraphQL レスポンスが {timeout_sec}秒以内に取得できませんでした: "
-            f"{tweet_url}"
-        )
+            # ツイートページへ遷移
+            await page.goto(tweet_url, wait_until="domcontentloaded")
+
+            try:
+                metrics = await asyncio.wait_for(
+                    metrics_future,
+                    timeout=timeout_sec,
+                )
+                return metrics
+            except asyncio.TimeoutError:
+                if attempt < len(timeouts):
+                    logger.warning(
+                        "GraphQL応答がタイムアウト (%d/%d、%.1f秒): %s。再試行します",
+                        attempt,
+                        len(timeouts),
+                        timeout_sec,
+                        tweet_url,
+                    )
+                    continue
+                raise TimeoutError(
+                    f"GraphQL レスポンスが {timeout_sec}秒以内に取得できませんでした: "
+                    f"{tweet_url}"
+                )
     finally:
         # ハンドラを解除
         page.remove_listener("response", _handle_response)

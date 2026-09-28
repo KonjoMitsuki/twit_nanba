@@ -336,16 +336,31 @@ async def check_new_art_post(
     profile_url = f"https://x.com/{_screen_name}"
     logger.info("🔍 プロフィール確認: %s", profile_url)
 
-    try:
-        await page.goto(profile_url, wait_until="domcontentloaded")
-        await page.wait_for_selector(
-            "article[data-testid='tweet']",
-            timeout=config.PROFILE_LOAD_TIMEOUT_SEC * 1000,
-        )
-    except Exception as e:
-        logger.error("プロフィールページの読み込みに失敗: %s", e)
-        save_last_check_time()  # 失敗してもタイマーリセット（連続リトライ防止）
-        return False
+    profile_timeouts = (
+        config.PROFILE_LOAD_TIMEOUT_SEC,
+        config.PROFILE_LOAD_RETRY_TIMEOUT_SEC,
+    )
+    for attempt, timeout_sec in enumerate(profile_timeouts, start=1):
+        try:
+            await page.goto(profile_url, wait_until="domcontentloaded")
+            await page.wait_for_selector(
+                "article[data-testid='tweet']",
+                timeout=timeout_sec * 1000,
+            )
+            break
+        except Exception as e:
+            if attempt < len(profile_timeouts):
+                logger.warning(
+                    "プロフィールページの読み込みに失敗 (%d/%d、%.0f秒): %s。再試行します",
+                    attempt,
+                    len(profile_timeouts),
+                    timeout_sec,
+                    e,
+                )
+                continue
+            logger.error("プロフィールページの読み込みに失敗: %s", e)
+            save_last_check_time()  # 失敗してもタイマーリセット（連続リトライ防止）
+            return False
 
     # 最新ツイートを上から走査（最大5件）
     tweets = page.locator("article[data-testid='tweet']")

@@ -75,7 +75,9 @@ MAX_SCROLL_COUNT: int = 5      # 最大スクロール回数
 
 # X のページ・GraphQL応答待機タイムアウト（秒）
 PROFILE_LOAD_TIMEOUT_SEC: float = 45.0
+PROFILE_LOAD_RETRY_TIMEOUT_SEC: float = 60.0
 GRAPHQL_TIMEOUT_SEC: float = 30.0
+GRAPHQL_RETRY_TIMEOUT_SEC: float = 45.0
 
 # 対象ゼロ時の無負荷終了待機（秒）
 NO_TARGET_WAIT_SEC: float = 0.5
