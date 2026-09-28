@@ -28,6 +28,44 @@ def test_calendar_uses_jst_date_and_daily_follower_delta(tmp_path):
     assert result["days"][0]["followers_delta"] == 21
 
 
+def test_backfill_account_metrics_is_idempotent_and_ignores_invalid_values(tmp_path):
+    db_path = str(tmp_path / "app.db")
+    artwork_id = app_db.create_artwork(
+        tweet_id="tweet-backfill",
+        url="https://x.com/example/status/backfill",
+        title="Backfill",
+        posted_at="2026-08-31T12:00:00+00:00",
+        db_path=db_path,
+    )
+    app_db.add_metric_snapshot(
+        artwork_id,
+        stage="5m",
+        elapsed_seconds=300,
+        measured_at="2026-08-31T12:05:00+00:00",
+        followers=100,
+        db_path=db_path,
+    )
+    app_db.add_metric_snapshot(
+        artwork_id,
+        stage="1h",
+        elapsed_seconds=3600,
+        measured_at="2026-08-31T13:00:00+00:00",
+        followers=0,
+        db_path=db_path,
+    )
+
+    first = app_db.backfill_account_metrics_from_snapshots(db_path)
+    second = app_db.backfill_account_metrics_from_snapshots(db_path)
+
+    assert first["inserted"] == 1
+    assert second["inserted"] == 0
+    assert app_db.get_followers(
+        "2026-08-31T12:00:00+00:00",
+        "2026-08-31T14:00:00+00:00",
+        db_path,
+    )[0]["followers"] == 100
+
+
 def test_missing_latest_metric_is_not_zero(tmp_path):
     db_path = str(tmp_path / "app.db")
     app_db.create_artwork(

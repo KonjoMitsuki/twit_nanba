@@ -103,6 +103,16 @@ APP_DB_PATH=./app.db PYTHONPATH=. python scripts/migrate_notion_to_app_db.py
 ```
 
 出力される取得数、`*_inserted`、`*_skipped`、`errors` を確認してください。同じコマンドを再実行しても、投稿 ID と作品・ステージをキーに重複登録されません。
+移行完了後は、有効な過去スナップショットから日次フォロワー履歴も自動補填されます。
+
+既存の `app.db` だけを補填する場合は、次を実行してください。`--dry-run` で追加件数を確認してから本実行できます。
+
+```bash
+PYTHONPATH=. python scripts/backfill_account_metrics.py --db ./app.db --dry-run
+PYTHONPATH=. python scripts/backfill_account_metrics.py --db ./app.db
+```
+
+既存時刻の値は保持され、同じコマンドを再実行しても重複登録されません。
 
 Collector は新規作品、計測スナップショット、状態更新を Notion と App DB の双方へ保存します。片方の保存に失敗しても処理を継続し、`Notion ... 成功/失敗` と `App DB ... 成功/失敗` のログで確認できます。
 

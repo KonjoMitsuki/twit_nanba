@@ -92,7 +92,7 @@ def _parse_iso(value: str) -> str:
 
 def migrate() -> dict[str, int]:
     app_db.init_db()
-    counts = {"artworks_fetched": 0, "artworks_inserted": 0, "artworks_skipped": 0, "metrics_fetched": 0, "metrics_inserted": 0, "metrics_skipped": 0, "errors": 0}
+    counts = {"artworks_fetched": 0, "artworks_inserted": 0, "artworks_skipped": 0, "metrics_fetched": 0, "metrics_inserted": 0, "metrics_skipped": 0, "account_metrics_inserted": 0, "errors": 0}
     page_to_artwork: dict[str, str] = {}
 
     artwork_pages = _pages(config.ARTWORKS_DB_ID)
@@ -160,6 +160,8 @@ def migrate() -> dict[str, int]:
             counts["errors"] += 1
             logger.exception("メトリクスページ %s をスキップ: %s", page.get("id"), exc)
 
+    backfill = app_db.backfill_account_metrics_from_snapshots()
+    counts["account_metrics_inserted"] = backfill["inserted"]
     logger.info("移行完了: %s", counts)
     return counts
 

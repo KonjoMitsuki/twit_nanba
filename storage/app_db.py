@@ -260,6 +260,46 @@ def add_account_metric(followers: int, measured_at: str, db_path: str | None = N
     return metric_id
 
 
+def backfill_account_metrics_from_snapshots(
+    db_path: str | None = None,
+    *,
+    dry_run: bool = False,
+) -> dict[str, int]:
+    """Fill missing account metrics from valid historical snapshots.
+
+    Existing account metrics win when the same timestamp is already present.
+    """
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        source_rows = connection.execute(
+            """SELECT measured_at, MAX(followers) AS followers
+            FROM metric_snapshots
+            WHERE followers > 0
+            GROUP BY measured_at
+            ORDER BY measured_at""",
+        ).fetchall()
+        existing_times = {
+            row[0] for row in connection.execute(
+                "SELECT DISTINCT measured_at FROM account_metrics",
+            )
+        }
+        rows_to_insert = [
+            (f"account_{uuid.uuid4().hex[:12]}", row["measured_at"], row["followers"])
+            for row in source_rows
+            if row["measured_at"] not in existing_times
+        ]
+        if not dry_run and rows_to_insert:
+            connection.executemany(
+                "INSERT INTO account_metrics (id, measured_at, followers) VALUES (?, ?, ?)",
+                rows_to_insert,
+            )
+    return {
+        "source_times": len(source_rows),
+        "inserted": len(rows_to_insert),
+        "skipped_existing": len(source_rows) - len(rows_to_insert),
+    }
+
+
 def _month_bounds(year: int, month: int) -> tuple[str, str]:
     start_jst = datetime(year, month, 1, tzinfo=JST)
     next_month_jst = datetime(
