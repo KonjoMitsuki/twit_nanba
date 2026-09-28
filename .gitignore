@@ -5,6 +5,8 @@ auth_state.json
 fans.db
 backup.db
 app.db
+*.db.bak
+*.db.bak.*
 
 # Python
 __pycache__/
@@ -34,3 +36,4 @@ Thumbs.db
 # log
 *.log
 cron.logj.process.lock
+.process.lock
