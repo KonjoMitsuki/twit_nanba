@@ -29,10 +29,10 @@ function renderCalendar(data) {
     const dateKey = `${data.year}-${String(data.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const dayData = byDate[dateKey];
     const cell = document.createElement('div');
-    cell.className = 'day-cell';
+    cell.className = `day-cell${dayData && dayData.artworks.length > 1 ? ' day-cell--multiple' : ''}`;
     cell.innerHTML = `<div class="day-number">${day}</div>`;
     if (dayData) {
-      const extraCount = Math.max(dayData.artworks.length - 1, 0);
+      const extraCount = Math.max(dayData.artworks.length - 2, 0);
       const cards = dayData.artworks.slice(0, 3).map((art, index) => `<a class="art-card${index > 0 ? ' art-card--extra' : ''}" href="/artworks/${art.id}"><div class="thumb">${art.image_url ? `<img src="${art.image_url}" alt="">` : '<span>NO IMAGE</span>'}${index === 0 && extraCount > 0 ? `<span class="art-extra-badge">+${extraCount}</span>` : ''}</div><div class="art-meta"><b class="art-likes">${shortNumber(art.likes)}</b><span class="art-likes-label"> likes</span><span class="art-rt">↗ ${shortNumber(art.retweets)}</span></div><small class="art-time">${new Date(art.posted_at).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'})}</small></a>`).join('');
       const more = dayData.artworks.length > 3 ? `<span class="more">+${dayData.artworks.length - 3} more</span>` : '';
       cell.insertAdjacentHTML('beforeend', `<div class="artworks">${cards}${more}</div><div class="day-footer"><span class="delta ${dayData.followers_delta > 0 ? 'positive' : ''}">${dayData.followers_delta == null ? '—' : `${dayData.followers_delta >= 0 ? '+' : ''}${number(dayData.followers_delta)} followers`}</span><span class="post-count">${dayData.artworks.length} post${dayData.artworks.length === 1 ? '' : 's'}</span></div>`);
