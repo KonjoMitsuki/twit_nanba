@@ -1,6 +1,6 @@
 const id = location.pathname.split('/').filter(Boolean).pop();
 const number = value => value == null ? '—' : new Intl.NumberFormat('ja-JP').format(value);
-const state = { metric: 'likes', mode: 'absolute', imageIndex: 0 };
+const state = { metric: 'likes', mode: 'absolute', xAxisMode: 'stage', imageIndex: 0 };
 let points = [];
 let images = [];
 
@@ -15,6 +15,11 @@ async function load() {
   renderCarousel();
   document.querySelectorAll('[data-metric]').forEach(button => button.onclick = () => { state.metric = button.dataset.metric; updateTabs(); drawChart(); });
   document.querySelectorAll('[data-mode]').forEach(button => button.onclick = () => { state.mode = button.dataset.mode; updateTabs(); drawChart(); });
+  document.querySelector('#chart').onclick = event => {
+    if (!event.target.closest('[data-x-axis-label]')) return;
+    state.xAxisMode = state.xAxisMode === 'stage' ? 'measuredAt' : 'stage';
+    drawChart();
+  };
   window.addEventListener('resize', drawChart);
   document.addEventListener('keydown', handleKeydown);
   drawChart();
@@ -94,6 +99,23 @@ function getVisibleXAxisIndexes(labels, xPositionPx) {
   return new Set(chosen.map(item => item.index));
 }
 
+function getXAxisLabels() {
+  if (state.xAxisMode === 'stage') return points.map(point => point.stage);
+  let previousDate = '';
+  return points.map(point => {
+    const measuredAt = new Date(point.measured_at);
+    const date = `${measuredAt.getFullYear()}-${measuredAt.getMonth()}-${measuredAt.getDate()}`;
+    const time = measuredAt.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    const label = date === previousDate ? time : `${measuredAt.getMonth() + 1}/${measuredAt.getDate()} ${time}`;
+    previousDate = date;
+    return label;
+  });
+}
+
+function getXAxisModeLabel() {
+  return state.xAxisMode === 'stage' ? '経過時間' : '計測時間';
+}
+
 function drawChart() {
   const values = points.map((point, index) => state.mode === 'absolute' || index === 0 ? point[state.metric] : point[state.metric] - points[index - 1][state.metric]);
   if (state.mode === 'delta') {
@@ -137,10 +159,12 @@ function drawChart() {
     const yPosition = y(value);
     return `<line x1="${left}" y1="${yPosition}" x2="${width - right}" y2="${yPosition}" class="chart-grid"/><text x="${left - 8}" y="${yPosition + 4}" class="chart-y-label" text-anchor="end">${number(Math.round(value))}</text>`;
   }).join('');
-  const visibleXIndexes = getVisibleXAxisIndexes(points.map(point => point.stage), index => x(index) * xScale);
-  const labels = points.map((point, index) => visibleXIndexes.has(index) ? `<text x="${x(index)}" y="${height - 14}" class="chart-label" text-anchor="middle">${point.stage}</text>` : '').join('');
+  const xAxisLabels = getXAxisLabels();
+  const visibleXIndexes = getVisibleXAxisIndexes(xAxisLabels, index => x(index) * xScale);
+  const labels = points.map((point, index) => visibleXIndexes.has(index) ? `<text x="${x(index)}" y="${height - 14}" class="chart-label" text-anchor="middle">${xAxisLabels[index]}</text>` : '').join('');
+  const xAxisHitArea = `<rect x="${left}" y="${height - bottom}" width="${chartWidth}" height="${bottom}" fill="transparent" data-x-axis-label="true" style="cursor:pointer"/>`;
   const latest = latestIndex >= 0 ? values[latestIndex] : null;
-  document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移">${grid}<line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polygon points="${areaPoints}" class="chart-area"/><polyline points="${linePoints}" class="chart-line"/>${valueLabels}${labels}</svg><div class="chart-legend"><span class="chart-legend-line"></span><span>経過時間</span></div>`;
+  document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移">${grid}<line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polygon points="${areaPoints}" class="chart-area"/><polyline points="${linePoints}" class="chart-line"/>${valueLabels}${labels}${xAxisHitArea}</svg><div class="chart-legend"><span class="chart-legend-line"></span><span>${getXAxisModeLabel()}（タップで切替）</span></div>`;
 }
 
 function drawDeltaBarChart(values) {
@@ -163,16 +187,17 @@ function drawDeltaBarChart(values) {
   const plotWidth = Math.max(1, chartWidth - plotLeft - 4);
   const plotHeight = 238;
   const visibleLabelIndexes = getVisibleLabelIndexes(values, labelIndexes, thresholdIndexes, index => plotLeft + ((index + 0.5) / values.length) * plotWidth, index => 10 + plotHeight - (values[index] == null ? 0 : Math.max(4, values[index] / max * 100) / 100 * plotHeight));
-  const visibleXIndexes = getVisibleXAxisIndexes(points.map(point => point.stage), index => plotLeft + ((index + 0.5) / values.length) * plotWidth);
+  const xAxisLabels = getXAxisLabels();
+  const visibleXIndexes = getVisibleXAxisIndexes(xAxisLabels, index => plotLeft + ((index + 0.5) / values.length) * plotWidth);
   const bars = values.map((value, index) => {
     const valueLabel = visibleLabelIndexes.has(index) ? `<small class="bar-value-label ${thresholdIndexes.has(index) ? 'chart-threshold-label' : ''}">${number(value)}</small>` : '<small class="bar-value-label"></small>';
-    const xLabel = visibleXIndexes.has(index) ? `<small class="bar-x-label">${points[index].stage}</small>` : '<small class="bar-x-label"></small>';
+    const xLabel = visibleXIndexes.has(index) ? `<small class="bar-x-label" data-x-axis-label="true" tabindex="0">${xAxisLabels[index]}</small>` : '<small class="bar-x-label"></small>';
     const height = value == null ? 0 : Math.max(4, value / max * 100);
-    return `<div class="bar-wrap" title="${points[index].stage}: ${number(value)}">${valueLabel}<div class="bar" style="height:${height}%"></div>${xLabel}</div>`;
+    return `<div class="bar-wrap" title="${xAxisLabels[index]}: ${number(value)}">${valueLabel}<div class="bar" style="height:${height}%"></div>${xLabel}</div>`;
   }).join('');
   const tickCount = Math.min(4, Math.max(1, Math.floor(max)));
   const yLabels = Array.from({ length: tickCount + 1 }, (_, index) => `<span>${number(Math.round(max * (tickCount - index) / tickCount))}</span>`).join('');
-  document.querySelector('#chart').innerHTML = `<div class="bar-chart delta-chart"><div class="bar-y-labels">${yLabels}</div><div class="bar-plot">${bars}</div></div><div class="chart-value">${number(latestIndex >= 0 ? values[latestIndex] : null)} <small>since previous</small></div>`;
+  document.querySelector('#chart').innerHTML = `<div class="bar-chart delta-chart"><div class="bar-y-labels">${yLabels}</div><div class="bar-plot">${bars}</div><div data-x-axis-label="true" style="position:absolute;left:0;right:0;bottom:0;height:32px;z-index:3;cursor:pointer"></div></div><div class="chart-value">${number(latestIndex >= 0 ? values[latestIndex] : null)} <small>since previous</small></div><div class="chart-legend"><span>${getXAxisModeLabel()}（タップで切替）</span></div>`;
 }
 
 load().catch(() => { document.querySelector('#detail').innerHTML = '<p class="error">作品が見つかりませんでした。</p>'; });
