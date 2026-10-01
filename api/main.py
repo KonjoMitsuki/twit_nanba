@@ -94,7 +94,10 @@ def detect_status():
 
 @app.get("/api/calendar")
 def calendar(year: int = Query(..., ge=2000, le=2200), month: int = Query(..., ge=1, le=12)):
-    return app_db.get_calendar(year, month)
+    result = app_db.get_calendar(year, month)
+    screen_name = config.X_SCREEN_NAME.lstrip("@").strip()
+    result["tracked_profile_url"] = f"https://x.com/{screen_name}" if screen_name else None
+    return result
 
 
 @app.get("/api/artworks/{artwork_id}")
@@ -102,6 +105,8 @@ def artwork(artwork_id: str):
     result = app_db.get_artwork(artwork_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Artwork not found")
+    screen_name = config.X_SCREEN_NAME.lstrip("@").strip()
+    result["tracked_profile_url"] = f"https://x.com/{screen_name}" if screen_name else None
     return result
 
 

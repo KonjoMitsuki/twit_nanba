@@ -9,6 +9,11 @@ async function loadCalendar() {
   document.querySelector('#month-title').textContent = monthName.format(state.date);
   const response = await fetch(`/api/calendar?year=${year}&month=${month}`);
   const data = await response.json();
+  const profileLink = document.querySelector('#tracked-profile-link');
+  if (data.tracked_profile_url) {
+    profileLink.href = data.tracked_profile_url;
+    profileLink.hidden = false;
+  }
   renderSummary(data.summary);
   renderCalendar(data);
 }

@@ -22,6 +22,21 @@ async function load() {
   };
   window.addEventListener('resize', drawChart);
   document.addEventListener('keydown', handleKeydown);
+  const detailHeader = document.querySelector('.detail-header');
+  const detailActions = document.createElement('div');
+  detailActions.className = 'detail-actions';
+  const postLink = detailHeader.querySelector('.x-link');
+  detailActions.append(postLink);
+  if (artwork.tracked_profile_url) {
+    const profileLink = document.createElement('a');
+    profileLink.className = 'x-link';
+    profileLink.href = artwork.tracked_profile_url;
+    profileLink.target = '_blank';
+    profileLink.rel = 'noreferrer';
+    profileLink.textContent = '𝕏プロフィール ↗';
+    detailActions.append(profileLink);
+  }
+  detailHeader.append(detailActions);
   drawChart();
 }
 
