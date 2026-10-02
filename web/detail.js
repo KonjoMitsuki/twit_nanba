@@ -282,7 +282,7 @@ function drawChart() {
   const visibleXIndexes = getVisibleXAxisIndexes(xAxisLabels, index => x(index) * xScale);
   const labels = points.map((point, index) => visibleXIndexes.has(index) ? `<text x="${x(index)}" y="${height - 14}" class="chart-label" text-anchor="middle">${xAxisLabels[index]}</text>` : '').join('');
   const xAxisHitArea = `<rect x="${left}" y="${height - bottom}" width="${chartWidth}" height="${bottom}" fill="transparent" data-x-axis-label="true" style="cursor:pointer"/>`;
-  const plotMarkers = values.map((value, index) => value == null ? '' : `<circle class="chart-point" data-chart-point-index="${index}" cx="${x(index)}" cy="${y(value)}" r="0"></circle>`).join('');
+  const plotMarkers = values.map((value, index) => value == null ? '' : `<circle class="chart-point" data-chart-point-index="${index}" cx="${x(index)}" cy="${y(value)}" r="6"></circle>`).join('');
   document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移">${grid}<line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polygon points="${areaPoints}" class="chart-area"/><polyline points="${linePoints}" class="chart-line"/>${plotMarkers}${valueLabels}${labels}${xAxisHitArea}</svg><div class="chart-tooltip" hidden></div><div class="chart-legend"><span class="chart-legend-line"></span><span>${getXAxisModeLabel()}（タップで切替）</span></div>`;
   bindChartInteractions();
 }
