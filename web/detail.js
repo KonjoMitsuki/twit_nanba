@@ -171,9 +171,16 @@ function bindChartInteractions() {
     chart.append(tooltip);
   }
 
+  const setActivePoint = (element, active) => {
+    if (element.classList && element.classList.contains('chart-point')) {
+      element.classList.toggle('active', active);
+    }
+  };
+
   const showTooltip = (element, clientX, clientY) => {
     const pointIndex = Number(element.dataset.chartPointIndex ?? element.dataset.index);
     if (!Number.isInteger(pointIndex) || !points[pointIndex]) return;
+    setActivePoint(element, true);
     tooltip.innerHTML = createChartTooltipMarkup(pointIndex);
     const chartRect = chart.getBoundingClientRect();
     const left = clientX != null ? clientX - chartRect.left : element.getBoundingClientRect().left - chartRect.left + element.getBoundingClientRect().width / 2;
@@ -185,6 +192,7 @@ function bindChartInteractions() {
 
   const hideTooltip = () => {
     tooltip.hidden = true;
+    chart.querySelectorAll('.chart-point').forEach(point => point.classList.remove('active'));
   };
 
   chart.querySelectorAll('.chart-point, .bar-wrap').forEach(element => {
@@ -196,14 +204,32 @@ function bindChartInteractions() {
       showTooltip(element, touch.clientX, touch.clientY);
     };
 
-    element.addEventListener('pointerenter', showOnPointer);
+    element.addEventListener('pointerenter', event => {
+      showOnPointer(event);
+      setActivePoint(element, true);
+    });
     element.addEventListener('pointermove', showOnPointer);
-    element.addEventListener('pointerleave', hideTooltip);
-    element.addEventListener('pointerdown', showOnPointer);
-    element.addEventListener('touchstart', showOnTouch, { passive: false });
+    element.addEventListener('pointerleave', () => {
+      hideTooltip();
+      setActivePoint(element, false);
+    });
+    element.addEventListener('pointerdown', event => {
+      showOnPointer(event);
+      setActivePoint(element, true);
+    });
+    element.addEventListener('touchstart', event => {
+      showOnTouch(event);
+      setActivePoint(element, true);
+    }, { passive: false });
     element.addEventListener('touchmove', showOnTouch, { passive: false });
-    element.addEventListener('touchend', hideTooltip);
-    element.addEventListener('touchcancel', hideTooltip);
+    element.addEventListener('touchend', () => {
+      hideTooltip();
+      setActivePoint(element, false);
+    });
+    element.addEventListener('touchcancel', () => {
+      hideTooltip();
+      setActivePoint(element, false);
+    });
   });
 
   chart.addEventListener('pointerleave', hideTooltip);
@@ -256,7 +282,7 @@ function drawChart() {
   const visibleXIndexes = getVisibleXAxisIndexes(xAxisLabels, index => x(index) * xScale);
   const labels = points.map((point, index) => visibleXIndexes.has(index) ? `<text x="${x(index)}" y="${height - 14}" class="chart-label" text-anchor="middle">${xAxisLabels[index]}</text>` : '').join('');
   const xAxisHitArea = `<rect x="${left}" y="${height - bottom}" width="${chartWidth}" height="${bottom}" fill="transparent" data-x-axis-label="true" style="cursor:pointer"/>`;
-  const plotMarkers = values.map((value, index) => value == null ? '' : `<circle class="chart-point" data-chart-point-index="${index}" cx="${x(index)}" cy="${y(value)}" r="4.5"></circle>`).join('');
+  const plotMarkers = values.map((value, index) => value == null ? '' : `<circle class="chart-point" data-chart-point-index="${index}" cx="${x(index)}" cy="${y(value)}" r="0"></circle>`).join('');
   document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移">${grid}<line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polygon points="${areaPoints}" class="chart-area"/><polyline points="${linePoints}" class="chart-line"/>${plotMarkers}${valueLabels}${labels}${xAxisHitArea}</svg><div class="chart-tooltip" hidden></div><div class="chart-legend"><span class="chart-legend-line"></span><span>${getXAxisModeLabel()}（タップで切替）</span></div>`;
   bindChartInteractions();
 }
