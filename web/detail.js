@@ -121,7 +121,8 @@ function getXAxisLabels() {
     const measuredAt = new Date(point.measured_at);
     const date = `${measuredAt.getFullYear()}-${measuredAt.getMonth()}-${measuredAt.getDate()}`;
     const time = measuredAt.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-    const label = date === previousDate ? time : `${measuredAt.getMonth() + 1}/${measuredAt.getDate()} ${time}`;
+    const monthDay = `${String(measuredAt.getMonth() + 1).padStart(2, '0')}/${String(measuredAt.getDate()).padStart(2, '0')}`;
+    const label = date === previousDate ? time : `${time}\n${monthDay}`;
     previousDate = date;
     return label;
   });
@@ -280,7 +281,13 @@ function drawChart() {
   }).join('');
   const xAxisLabels = getXAxisLabels();
   const visibleXIndexes = getVisibleXAxisIndexes(xAxisLabels, index => x(index) * xScale);
-  const labels = points.map((point, index) => visibleXIndexes.has(index) ? `<text x="${x(index)}" y="${height - 14}" class="chart-label" text-anchor="middle">${xAxisLabels[index]}</text>` : '').join('');
+  const labels = points.map((point, index) => {
+    if (!visibleXIndexes.has(index)) return '';
+    const labelText = xAxisLabels[index];
+    const lines = String(labelText).split('\n');
+    const baseY = height - 14;
+    return lines.map((line, lineIndex) => `<text x="${x(index)}" y="${baseY + lineIndex * 12}" class="chart-label" text-anchor="middle">${line}</text>`).join('');
+  }).join('');
   const xAxisHitArea = `<rect x="${left}" y="${height - bottom}" width="${chartWidth}" height="${bottom}" fill="transparent" data-x-axis-label="true" style="cursor:pointer"/>`;
   const plotMarkers = values.map((value, index) => value == null ? '' : `<circle class="chart-point" data-chart-point-index="${index}" cx="${x(index)}" cy="${y(value)}" r="6"></circle>`).join('');
   document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移">${grid}<line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polygon points="${areaPoints}" class="chart-area"/><polyline points="${linePoints}" class="chart-line"/>${plotMarkers}${valueLabels}${labels}${xAxisHitArea}</svg><div class="chart-tooltip" hidden></div><div class="chart-legend"><span class="chart-legend-line"></span><span>${getXAxisModeLabel()}（タップで切替）</span></div>`;
@@ -311,7 +318,8 @@ function drawDeltaBarChart(values) {
   const visibleXIndexes = getVisibleXAxisIndexes(xAxisLabels, index => plotLeft + ((index + 0.5) / values.length) * plotWidth);
   const bars = values.map((value, index) => {
     const valueLabel = visibleLabelIndexes.has(index) ? `<small class="bar-value-label ${thresholdIndexes.has(index) ? 'chart-threshold-label' : ''}">${number(value)}</small>` : '<small class="bar-value-label"></small>';
-    const xLabel = visibleXIndexes.has(index) ? `<small class="bar-x-label" data-x-axis-label="true" tabindex="0">${xAxisLabels[index]}</small>` : '<small class="bar-x-label"></small>';
+    const xLabelText = String(xAxisLabels[index]).split('\n').join('<br>');
+    const xLabel = visibleXIndexes.has(index) ? `<small class="bar-x-label" data-x-axis-label="true" tabindex="0">${xLabelText}</small>` : '<small class="bar-x-label"></small>';
     const height = value == null ? 0 : Math.max(4, value / max * 100);
     return `<div class="bar-wrap" data-chart-point-index="${index}" title="${xAxisLabels[index]}: ${number(value)}">${valueLabel}<div class="bar" style="height:${height}%"></div>${xLabel}</div>`;
   }).join('');
