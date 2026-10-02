@@ -131,6 +131,84 @@ function getXAxisModeLabel() {
   return state.xAxisMode === 'stage' ? '経過時間' : '計測時間';
 }
 
+function getMetricLabel() {
+  return {
+    likes: 'Likes',
+    retweets: 'RT',
+    impressions: 'Impressions'
+  }[state.metric] || '計測値';
+}
+
+function getChartPointValue(index) {
+  const point = points[index];
+  if (!point) return null;
+  if (state.mode === 'absolute' || index === 0) return point[state.metric];
+  const previous = points[index - 1];
+  return previous == null || previous[state.metric] == null || point[state.metric] == null ? point[state.metric] : point[state.metric] - previous[state.metric];
+}
+
+function createChartTooltipMarkup(index) {
+  const point = points[index];
+  const value = getChartPointValue(index);
+  if (!point) return '';
+  const measuredAt = new Date(point.measured_at);
+  return `
+    <div class="chart-tooltip-header">${getMetricLabel()}</div>
+    <div class="chart-tooltip-row"><span>計測値</span><strong>${number(value)}</strong></div>
+    <div class="chart-tooltip-row"><span>経過時間</span><strong>${point.stage || '—'}</strong></div>
+    <div class="chart-tooltip-row"><span>計測日時</span><strong>${measuredAt.toLocaleString('ja-JP')}</strong></div>
+  `;
+}
+
+function bindChartInteractions() {
+  const chart = document.querySelector('#chart');
+  if (!chart) return;
+
+  const tooltip = chart.querySelector('.chart-tooltip') || document.createElement('div');
+  tooltip.className = 'chart-tooltip';
+  tooltip.hidden = true;
+  if (!chart.querySelector('.chart-tooltip')) {
+    chart.append(tooltip);
+  }
+
+  const showTooltip = (element, clientX, clientY) => {
+    const pointIndex = Number(element.dataset.chartPointIndex ?? element.dataset.index);
+    if (!Number.isInteger(pointIndex) || !points[pointIndex]) return;
+    tooltip.innerHTML = createChartTooltipMarkup(pointIndex);
+    const chartRect = chart.getBoundingClientRect();
+    const left = clientX != null ? clientX - chartRect.left : element.getBoundingClientRect().left - chartRect.left + element.getBoundingClientRect().width / 2;
+    const top = clientY != null ? clientY - chartRect.top : element.getBoundingClientRect().top - chartRect.top;
+    tooltip.style.left = `${Math.min(Math.max(left, 76), chartRect.width - 76)}px`;
+    tooltip.style.top = `${Math.max(top - 12, 18)}px`;
+    tooltip.hidden = false;
+  };
+
+  const hideTooltip = () => {
+    tooltip.hidden = true;
+  };
+
+  chart.querySelectorAll('.chart-point, .bar-wrap').forEach(element => {
+    const showOnPointer = event => showTooltip(element, event.clientX, event.clientY);
+    const showOnTouch = event => {
+      const touch = event.touches && event.touches[0] ? event.touches[0] : event.changedTouches && event.changedTouches[0];
+      if (!touch) return;
+      event.preventDefault();
+      showTooltip(element, touch.clientX, touch.clientY);
+    };
+
+    element.addEventListener('pointerenter', showOnPointer);
+    element.addEventListener('pointermove', showOnPointer);
+    element.addEventListener('pointerleave', hideTooltip);
+    element.addEventListener('pointerdown', showOnPointer);
+    element.addEventListener('touchstart', showOnTouch, { passive: false });
+    element.addEventListener('touchmove', showOnTouch, { passive: false });
+    element.addEventListener('touchend', hideTooltip);
+    element.addEventListener('touchcancel', hideTooltip);
+  });
+
+  chart.addEventListener('pointerleave', hideTooltip);
+}
+
 function drawChart() {
   const values = points.map((point, index) => state.mode === 'absolute' || index === 0 ? point[state.metric] : point[state.metric] - points[index - 1][state.metric]);
   if (state.mode === 'delta') {
@@ -178,8 +256,9 @@ function drawChart() {
   const visibleXIndexes = getVisibleXAxisIndexes(xAxisLabels, index => x(index) * xScale);
   const labels = points.map((point, index) => visibleXIndexes.has(index) ? `<text x="${x(index)}" y="${height - 14}" class="chart-label" text-anchor="middle">${xAxisLabels[index]}</text>` : '').join('');
   const xAxisHitArea = `<rect x="${left}" y="${height - bottom}" width="${chartWidth}" height="${bottom}" fill="transparent" data-x-axis-label="true" style="cursor:pointer"/>`;
-  const latest = latestIndex >= 0 ? values[latestIndex] : null;
-  document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移">${grid}<line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polygon points="${areaPoints}" class="chart-area"/><polyline points="${linePoints}" class="chart-line"/>${valueLabels}${labels}${xAxisHitArea}</svg><div class="chart-legend"><span class="chart-legend-line"></span><span>${getXAxisModeLabel()}（タップで切替）</span></div>`;
+  const plotMarkers = values.map((value, index) => value == null ? '' : `<circle class="chart-point" data-chart-point-index="${index}" cx="${x(index)}" cy="${y(value)}" r="4.5"></circle>`).join('');
+  document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移">${grid}<line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polygon points="${areaPoints}" class="chart-area"/><polyline points="${linePoints}" class="chart-line"/>${plotMarkers}${valueLabels}${labels}${xAxisHitArea}</svg><div class="chart-tooltip" hidden></div><div class="chart-legend"><span class="chart-legend-line"></span><span>${getXAxisModeLabel()}（タップで切替）</span></div>`;
+  bindChartInteractions();
 }
 
 function drawDeltaBarChart(values) {
@@ -208,11 +287,12 @@ function drawDeltaBarChart(values) {
     const valueLabel = visibleLabelIndexes.has(index) ? `<small class="bar-value-label ${thresholdIndexes.has(index) ? 'chart-threshold-label' : ''}">${number(value)}</small>` : '<small class="bar-value-label"></small>';
     const xLabel = visibleXIndexes.has(index) ? `<small class="bar-x-label" data-x-axis-label="true" tabindex="0">${xAxisLabels[index]}</small>` : '<small class="bar-x-label"></small>';
     const height = value == null ? 0 : Math.max(4, value / max * 100);
-    return `<div class="bar-wrap" title="${xAxisLabels[index]}: ${number(value)}">${valueLabel}<div class="bar" style="height:${height}%"></div>${xLabel}</div>`;
+    return `<div class="bar-wrap" data-chart-point-index="${index}" title="${xAxisLabels[index]}: ${number(value)}">${valueLabel}<div class="bar" style="height:${height}%"></div>${xLabel}</div>`;
   }).join('');
   const tickCount = Math.min(4, Math.max(1, Math.floor(max)));
   const yLabels = Array.from({ length: tickCount + 1 }, (_, index) => `<span>${number(Math.round(max * (tickCount - index) / tickCount))}</span>`).join('');
-  document.querySelector('#chart').innerHTML = `<div class="bar-chart delta-chart"><div class="bar-y-labels">${yLabels}</div><div class="bar-plot">${bars}</div><div data-x-axis-label="true" style="position:absolute;left:0;right:0;bottom:0;height:32px;z-index:3;cursor:pointer"></div></div><div class="chart-value">${number(latestIndex >= 0 ? values[latestIndex] : null)} <small>since previous</small></div><div class="chart-legend"><span>${getXAxisModeLabel()}（タップで切替）</span></div>`;
+  document.querySelector('#chart').innerHTML = `<div class="bar-chart delta-chart"><div class="bar-y-labels">${yLabels}</div><div class="bar-plot">${bars}</div><div data-x-axis-label="true" style="position:absolute;left:0;right:0;bottom:0;height:32px;z-index:3;cursor:pointer"></div></div><div class="chart-tooltip" hidden></div><div class="chart-value">${number(latestIndex >= 0 ? values[latestIndex] : null)} <small>since previous</small></div><div class="chart-legend"><span>${getXAxisModeLabel()}（タップで切替）</span></div>`;
+  bindChartInteractions();
 }
 
 load().catch(() => { document.querySelector('#detail').innerHTML = '<p class="error">作品が見つかりませんでした。</p>'; });
