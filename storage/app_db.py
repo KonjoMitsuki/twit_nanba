@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS artworks (
     title TEXT NOT NULL,
     posted_at TEXT NOT NULL,
     status TEXT NOT NULL,
+    character TEXT,
     next_schedule TEXT,
     new_fans_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
@@ -79,6 +80,11 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
 def init_db(db_path: str | None = None) -> None:
     with _connect(db_path) as connection:
         connection.executescript(SCHEMA)
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(artworks)")
+        }
+        if "character" not in columns:
+            connection.execute("ALTER TABLE artworks ADD COLUMN character TEXT")
 
 
 def _json_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -117,6 +123,7 @@ def create_artwork(
     title: str,
     posted_at: str,
     status: str = "TRACKING",
+    character: str | None = None,
     image_urls: list[str] | None = None,
     tags: list[str] | None = None,
     db_path: str | None = None,
@@ -126,8 +133,8 @@ def create_artwork(
     init_db(db_path)
     with _connect(db_path) as connection:
         connection.execute(
-            "INSERT INTO artworks (id, tweet_id, url, title, posted_at, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (artwork_id, tweet_id, url, title, posted_at, status, now, now),
+            "INSERT INTO artworks (id, tweet_id, url, title, posted_at, status, character, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (artwork_id, tweet_id, url, title, posted_at, status, character, now, now),
         )
         for order, image_url in enumerate(image_urls or [], 1):
             connection.execute(
@@ -146,6 +153,7 @@ def upsert_artwork(
     title: str,
     posted_at: str,
     status: str = "TRACKING",
+    character: str | None = None,
     next_schedule: str | None = None,
     new_fans_count: int = 0,
     image_urls: list[str] | None = None,
@@ -164,16 +172,17 @@ def upsert_artwork(
         connection.execute(
             """INSERT INTO artworks
             (id, tweet_id, url, title, posted_at, status, next_schedule,
-             new_fans_count, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             character, new_fans_count, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               tweet_id=excluded.tweet_id, url=excluded.url, title=excluded.title,
               posted_at=excluded.posted_at, status=excluded.status,
+              character=COALESCE(excluded.character, artworks.character),
               next_schedule=excluded.next_schedule,
               next_schedule=COALESCE(excluded.next_schedule, artworks.next_schedule),
               new_fans_count=excluded.new_fans_count, updated_at=excluded.updated_at""",
             (artwork_id, tweet_id, url, title, posted_at, status, next_schedule,
-             new_fans_count, now, now),
+             character, new_fans_count, now, now),
         )
         if image_urls:
             connection.execute("DELETE FROM artwork_images WHERE artwork_id = ?", (artwork_id,))
@@ -197,6 +206,7 @@ def update_artwork(
     status: str | None = None,
     next_schedule: str | None = None,
     new_fans_count: int | None = None,
+    character: str | None = None,
     db_path: str | None = None,
 ) -> None:
     """Update the mutable fields written by the collector."""
@@ -207,6 +217,8 @@ def update_artwork(
         fields["next_schedule"] = next_schedule
     if new_fans_count is not None:
         fields["new_fans_count"] = new_fans_count
+    if character is not None:
+        fields["character"] = character.strip() or None
     assignments = ", ".join(f"{key} = ?" for key in fields)
     init_db(db_path)
     with _connect(db_path) as connection:
@@ -351,6 +363,7 @@ def get_calendar(year: int, month: int, db_path: str | None = None) -> dict[str,
             days[day]["artworks"].append({
                 "id": item["id"], "title": item["title"], "posted_at": item["posted_at"], "image_url": item["image_url"],
                 "likes": item["likes"], "retweets": item["retweets"], "impressions": item["impressions"], "status": item["status"],
+                "character": item["character"],
             })
         month_rows = connection.execute(
             """SELECT COALESCE(SUM(likes), 0) AS likes, COALESCE(SUM(retweets), 0) AS retweets

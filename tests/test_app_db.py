@@ -136,3 +136,81 @@ def test_artwork_images_and_metrics_are_ordered(tmp_path):
 
     assert [image["image_order"] for image in artwork["images"]] == [1, 2, 3, 4]
     assert [point["elapsed_seconds"] for point in app_db.get_metrics(artwork_id, db_path)] == [300, 3600]
+
+
+def test_artwork_character_crud_and_migration(tmp_path):
+    db_path = str(tmp_path / "app.db")
+
+    # 1. create_artwork with character
+    artwork_id = app_db.create_artwork(
+        tweet_id="tweet-char-1",
+        url="https://x.com/example/status/char1",
+        title="Character Test 1",
+        posted_at="2026-09-01T12:00:00+00:00",
+        character="初音ミク",
+        db_path=db_path,
+    )
+    artwork = app_db.get_artwork(artwork_id, db_path)
+    assert artwork["character"] == "初音ミク"
+
+    # 2. get_calendar includes character
+    cal = app_db.get_calendar(2026, 9, db_path)
+    day = next(d for d in cal["days"] if d["date"] == "2026-09-01")
+    assert day["artworks"][0]["character"] == "初音ミク"
+
+    # 3. update_artwork updates character
+    app_db.update_artwork(artwork_id, character="巡音ルカ", db_path=db_path)
+    artwork = app_db.get_artwork(artwork_id, db_path)
+    assert artwork["character"] == "巡音ルカ"
+
+    # 4. upsert_artwork retains existing character if not provided, updates if provided
+    app_db.upsert_artwork(
+        tweet_id="tweet-char-1",
+        url="https://x.com/example/status/char1",
+        title="Character Test 1 Updated",
+        posted_at="2026-09-01T12:00:00+00:00",
+        character=None,
+        db_path=db_path,
+    )
+    artwork = app_db.get_artwork(artwork_id, db_path)
+    assert artwork["character"] == "巡音ルカ"
+
+    app_db.upsert_artwork(
+        tweet_id="tweet-char-1",
+        url="https://x.com/example/status/char1",
+        title="Character Test 1 Updated Again",
+        posted_at="2026-09-01T12:00:00+00:00",
+        character="鏡音リン",
+        db_path=db_path,
+    )
+    artwork = app_db.get_artwork(artwork_id, db_path)
+    assert artwork["character"] == "鏡音リン"
+
+
+def test_init_db_migrates_table_without_character_column(tmp_path):
+    import sqlite3
+    db_path = str(tmp_path / "legacy.db")
+
+    # Old schema without character column
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+        CREATE TABLE artworks (
+            id TEXT PRIMARY KEY,
+            tweet_id TEXT NOT NULL UNIQUE,
+            url TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            posted_at TEXT NOT NULL,
+            status TEXT NOT NULL,
+            next_schedule TEXT,
+            new_fans_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """)
+
+    # Running init_db will automatically ALTER TABLE to add character column
+    app_db.init_db(db_path)
+
+    with sqlite3.connect(db_path) as conn:
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(artworks)").fetchall()]
+    assert "character" in columns

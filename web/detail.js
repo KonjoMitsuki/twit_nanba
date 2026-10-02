@@ -37,7 +37,69 @@ async function load() {
     detailActions.append(profileLink);
   }
   detailHeader.append(detailActions);
+  setupCharacterEditor(artwork);
   drawChart();
+}
+
+function setupCharacterEditor(artwork) {
+  const editor = document.createElement('section');
+  editor.className = 'character-editor';
+  editor.innerHTML = '<div class="character-editor-heading"><span class="kicker">CHARACTER</span><strong class="character-value"></strong></div><div class="character-editor-actions"><button type="button" class="character-edit-button">編集</button><button type="button" class="character-auto-button">タグから自動入力</button></div><div class="character-edit-form" hidden><input type="text" maxlength="100" aria-label="キャラクター名"><button type="button" class="character-save-button">保存</button><button type="button" class="character-cancel-button">キャンセル</button></div><p class="character-editor-status" role="status"></p>';
+  document.querySelector('#detail .detail-header').insertAdjacentElement('afterend', editor);
+
+  const value = editor.querySelector('.character-value');
+  const form = editor.querySelector('.character-edit-form');
+  const input = editor.querySelector('input');
+  const status = editor.querySelector('.character-editor-status');
+  const setValue = character => {
+    value.textContent = character || '未設定';
+    input.value = character || '';
+  };
+  const setStatus = message => { status.textContent = message; };
+  const applyArtwork = updated => {
+    artwork.character = updated.character;
+    setValue(artwork.character);
+  };
+  const request = async (url, options) => {
+    const response = await fetch(url, options);
+    if (!response.ok) throw new Error((await response.json()).detail || '保存に失敗しました');
+    return response.json();
+  };
+
+  setValue(artwork.character);
+  editor.querySelector('.character-edit-button').onclick = () => {
+    form.hidden = false;
+    input.focus();
+    setStatus('');
+  };
+  editor.querySelector('.character-cancel-button').onclick = () => {
+    form.hidden = true;
+    setValue(artwork.character);
+    setStatus('');
+  };
+  editor.querySelector('.character-save-button').onclick = async () => {
+    try {
+      const updated = await request(`/api/artworks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ character: input.value.trim() || null }),
+      });
+      applyArtwork(updated);
+      form.hidden = true;
+      setStatus('保存しました');
+    } catch (error) {
+      setStatus(error.message);
+    }
+  };
+  editor.querySelector('.character-auto-button').onclick = async () => {
+    try {
+      const updated = await request(`/api/artworks/${id}/character/auto`, { method: 'POST' });
+      applyArtwork(updated);
+      setStatus(updated.character ? 'タグから入力しました' : '対応するタグがありません');
+    } catch (error) {
+      setStatus(error.message);
+    }
+  };
 }
 
 function renderCarousel() {

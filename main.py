@@ -29,6 +29,7 @@ import config
 from notion_client_wrapper import artworks, metrics_db
 from notion_client_wrapper import schedule_queue
 from processing import scheduler, new_fans
+from processing.character_mapper import character_for_tags
 from storage import app_db, fans_db, backup_db
 from scraper.browser import create_browser_context, random_wait
 from scraper.metrics import fetch_metrics
@@ -387,6 +388,7 @@ async def run(headless: bool = True) -> None:
                                 title=artwork_title,
                                 posted_at=now.isoformat(),
                                 status="5m",
+                                character=character_for_tags(hashtags, config.CHARACTER_MAP_PATH),
                                 image_urls=sq_images or None,
                                 tags=hashtags or None,
                             )

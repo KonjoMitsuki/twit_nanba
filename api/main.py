@@ -6,12 +6,14 @@ import time
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import config
 from scraper.auto_detect import check_new_art_post
 from scraper.browser import create_browser_context, random_wait
+from processing.character_mapper import character_for_tags
 from storage import app_db
 
 app = FastAPI(title="X Art Analytics API", version="1.0.0")
@@ -21,6 +23,10 @@ LOCK_PATH = Path(__file__).resolve().parent.parent / ".process.lock"
 _manual_detect_running = False
 _last_manual_trigger_ts = 0.0
 MANUAL_TRIGGER_COOLDOWN_SEC = 3 * 60
+
+
+class ArtworkCharacterUpdate(BaseModel):
+    character: str | None = Field(default=None, max_length=100)
 
 
 def _try_acquire_process_lock():
@@ -115,6 +121,31 @@ def metrics(artwork_id: str):
     if app_db.get_artwork(artwork_id) is None:
         raise HTTPException(status_code=404, detail="Artwork not found")
     return {"artwork_id": artwork_id, "points": app_db.get_metrics(artwork_id)}
+
+
+@app.patch("/api/artworks/{artwork_id}")
+def update_artwork_character(artwork_id: str, payload: ArtworkCharacterUpdate):
+    artwork = app_db.get_artwork(artwork_id)
+    if artwork is None:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+    app_db.update_artwork(
+        artwork_id,
+        character=payload.character or "",
+    )
+    return app_db.get_artwork(artwork_id)
+
+
+@app.post("/api/artworks/{artwork_id}/character/auto")
+def auto_fill_artwork_character(artwork_id: str):
+    artwork = app_db.get_artwork(artwork_id)
+    if artwork is None:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+    if artwork.get("character"):
+        return artwork
+    character = character_for_tags(artwork.get("tags", []), config.CHARACTER_MAP_PATH)
+    if character:
+        app_db.update_artwork(artwork_id, character=character)
+    return app_db.get_artwork(artwork_id)
 
 
 @app.get("/api/followers")

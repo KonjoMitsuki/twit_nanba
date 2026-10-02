@@ -27,7 +27,9 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
+import config
 from notion_client_wrapper import artworks
+from processing.character_mapper import character_for_tags
 from scraper.auto_detect import _extract_tweet_info, calculate_initial_stage
 from scraper.browser import create_browser_context
 from storage import app_db
@@ -132,6 +134,12 @@ def main() -> None:
         default=None,
         help="投稿日時（ISO 8601形式）。省略時は現在時刻。",
     )
+    parser.add_argument(
+        "--character",
+        type=str,
+        default=None,
+        help="描かれているキャラクター名。",
+    )
 
     args = parser.parse_args()
 
@@ -188,6 +196,10 @@ def main() -> None:
         tags = []
 
     initial_stage = calculate_initial_stage(posted_at.isoformat())
+    character = args.character.strip() if args.character and args.character.strip() else character_for_tags(
+        tags,
+        config.CHARACTER_MAP_PATH,
+    )
 
     # Notion に登録（同じURLの再実行では重複ページを作らない）
     try:
@@ -208,6 +220,8 @@ def main() -> None:
             )
             print("✅ 作品を登録しました。")
         print(f"   タイトル: {title}")
+        if character:
+            print(f"   キャラクター: {character}")
         print(f"   URL: {url}")
         print(f"   投稿日時: {posted_at.isoformat()}")
         print(f"   Page ID: {page_id}")
@@ -223,6 +237,7 @@ def main() -> None:
             title=title,
             posted_at=posted_at.isoformat(),
             status=initial_stage,
+            character=character,
             image_urls=image_urls,
             tags=tags,
         )

@@ -29,6 +29,7 @@ from playwright.async_api import Page
 
 import config
 from notion_client_wrapper import artworks
+from processing.character_mapper import character_for_tags
 from processing.scheduler import calculate_next_schedule
 from storage import backup_db
 from storage import app_db
@@ -441,6 +442,7 @@ async def check_new_art_post(
                 title=title,
                 posted_at=posted_at.isoformat(),
                 status=initial_stage,
+                character=character_for_tags(tags, config.CHARACTER_MAP_PATH),
                 image_urls=image_urls,
                 tags=tags,
             )
