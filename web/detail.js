@@ -38,6 +38,7 @@ async function load() {
   }
   detailHeader.append(detailActions);
   setupCharacterEditor(artwork);
+  setupTagList(artwork);
   drawChart();
 }
 
@@ -115,6 +116,32 @@ function setupCharacterEditor(artwork) {
       setStatus(error.message);
     }
   };
+}
+function setupTagList(artwork) {
+  const tags = Array.isArray(artwork.tags) ? artwork.tags.filter(Boolean) : [];
+  const section = document.createElement('section');
+  section.className = 'tag-list-section';
+  const heading = document.createElement('span');
+  heading.className = 'kicker';
+  heading.textContent = 'TAGS';
+  section.append(heading);
+  const list = document.createElement('div');
+  list.className = 'tag-list';
+  if (tags.length) {
+    tags.forEach(tag => {
+      const item = document.createElement('span');
+      item.className = 'detail-tag';
+      item.textContent = tag;
+      list.append(item);
+    });
+  } else {
+    const empty = document.createElement('span');
+    empty.className = 'tag-list-empty';
+    empty.textContent = '\u30bf\u30b0\u306a\u3057';
+    list.append(empty);
+  }
+  section.append(list);
+  document.querySelector('.character-editor').insertAdjacentElement('afterend', section);
 }
 
 function renderCarousel() {
