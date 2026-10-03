@@ -44,16 +44,17 @@ async function load() {
 function setupCharacterEditor(artwork) {
   const editor = document.createElement('section');
   editor.className = 'character-editor';
-  editor.innerHTML = '<div class="character-editor-heading"><span class="kicker">CHARACTER</span><strong class="character-value"></strong></div><div class="character-editor-actions"><button type="button" class="character-edit-button">編集</button><button type="button" class="character-auto-button">タグから自動入力</button></div><div class="character-edit-form" hidden><input type="text" maxlength="100" aria-label="キャラクター名"><button type="button" class="character-save-button">保存</button><button type="button" class="character-cancel-button">キャンセル</button></div><p class="character-editor-status" role="status"></p>';
+  editor.innerHTML = '<div class="character-editor-heading"><span class="kicker">CHARACTER</span><strong class="character-value-display"></strong><input class="character-value" type="text" maxlength="100" aria-label="キャラクター名" hidden></div><div class="character-editor-actions"><button type="button" class="character-edit-button">編集</button></div><div class="character-edit-form" hidden><button type="button" class="character-auto-button">タグから自動入力</button><button type="button" class="character-save-button">保存</button><button type="button" class="character-cancel-button">キャンセル</button></div><p class="character-editor-status" role="status"></p>';
   document.querySelector('#detail .detail-header').insertAdjacentElement('afterend', editor);
 
+  const display = editor.querySelector('.character-value-display');
   const value = editor.querySelector('.character-value');
   const form = editor.querySelector('.character-edit-form');
-  const input = editor.querySelector('input');
+  const editButton = editor.querySelector('.character-edit-button');
   const status = editor.querySelector('.character-editor-status');
   const setValue = character => {
-    value.textContent = character || '未設定';
-    input.value = character || '';
+    display.textContent = character || '';
+    value.value = character || '';
   };
   const setStatus = message => { status.textContent = message; };
   const applyArtwork = updated => {
@@ -67,14 +68,24 @@ function setupCharacterEditor(artwork) {
   };
 
   setValue(artwork.character);
-  editor.querySelector('.character-edit-button').onclick = () => {
+  const enterEditMode = () => {
+    display.hidden = true;
+    value.hidden = false;
     form.hidden = false;
-    input.focus();
+    editButton.hidden = true;
+    value.focus();
     setStatus('');
   };
-  editor.querySelector('.character-cancel-button').onclick = () => {
+  const leaveEditMode = () => {
+    display.hidden = false;
+    value.hidden = true;
     form.hidden = true;
+    editButton.hidden = false;
     setValue(artwork.character);
+  };
+  editButton.onclick = enterEditMode;
+  editor.querySelector('.character-cancel-button').onclick = () => {
+    leaveEditMode();
     setStatus('');
   };
   editor.querySelector('.character-save-button').onclick = async () => {
@@ -82,10 +93,10 @@ function setupCharacterEditor(artwork) {
       const updated = await request(`/api/artworks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ character: input.value.trim() || null }),
+        body: JSON.stringify({ character: value.value.trim() || null }),
       });
       applyArtwork(updated);
-      form.hidden = true;
+      leaveEditMode();
       setStatus('保存しました');
     } catch (error) {
       setStatus(error.message);
@@ -93,9 +104,13 @@ function setupCharacterEditor(artwork) {
   };
   editor.querySelector('.character-auto-button').onclick = async () => {
     try {
-      const updated = await request(`/api/artworks/${id}/character/auto`, { method: 'POST' });
-      applyArtwork(updated);
-      setStatus(updated.character ? 'タグから入力しました' : '対応するタグがありません');
+      const suggestion = await request(`/api/artworks/${id}/character/suggestion`);
+      if (suggestion.character) {
+        value.value = suggestion.character;
+        setStatus('タグから入力しました。保存すると反映されます');
+      } else {
+        setStatus('対応するタグがありません');
+      }
     } catch (error) {
       setStatus(error.message);
     }

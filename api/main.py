@@ -148,6 +148,19 @@ def auto_fill_artwork_character(artwork_id: str):
     return app_db.get_artwork(artwork_id)
 
 
+@app.get("/api/artworks/{artwork_id}/character/suggestion")
+def suggest_artwork_character(artwork_id: str):
+    artwork = app_db.get_artwork(artwork_id)
+    if artwork is None:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+    return {
+        "character": character_for_tags(
+            artwork.get("tags", []),
+            config.CHARACTER_MAP_PATH,
+        ),
+    }
+
+
 @app.get("/api/followers")
 def followers(from_date: str = Query(..., alias="from"), to_date: str = Query(..., alias="to")):
     return {"points": app_db.get_followers(from_date, to_date)}
