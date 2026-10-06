@@ -3,7 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import config
-from scraper.auto_detect import _extract_tweet_info, should_check_now
+from scraper.auto_detect import _extract_tweet_info, due_follower_slot, should_check_now
 
 
 def test_auto_detect_runs_after_fixed_check_time(monkeypatch, tmp_path):
@@ -74,3 +74,42 @@ def test_extract_tweet_info_strips_query_from_tweet_id():
     info = asyncio.run(_extract_tweet_info(FakeTweet()))
 
     assert info["tweet_id"] == "2103824446700278159"
+
+
+def test_due_follower_slot_returns_due_current_day_slot(monkeypatch, tmp_path):
+    state_file = tmp_path / "follower_state"
+    monkeypatch.setattr(config, "FOLLOWER_COLLECTION_STATE_FILE", str(state_file))
+    monkeypatch.setattr(config, "FOLLOWER_COLLECTION_TIMES", ((12, 0), (23, 59)))
+
+    now = datetime(2026, 9, 25, 12, 5, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+    assert due_follower_slot(now) == "12:00"
+
+
+def test_due_follower_slot_retries_previous_day_failed_slot(monkeypatch, tmp_path):
+    state_file = tmp_path / "follower_state"
+    monkeypatch.setattr(config, "FOLLOWER_COLLECTION_STATE_FILE", str(state_file))
+    monkeypatch.setattr(config, "FOLLOWER_COLLECTION_TIMES", ((12, 0), (23, 59)))
+    state_file.write_text(
+        '{"2026-09-24":{"23:59":{"attempts":1,"success":false}}}',
+        encoding="utf-8",
+    )
+
+    now = datetime(2026, 9, 25, 0, 5, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+    assert due_follower_slot(now) == "23:59"
+
+
+def test_due_follower_slot_skips_completed_and_exhausted_slots(monkeypatch, tmp_path):
+    state_file = tmp_path / "follower_state"
+    monkeypatch.setattr(config, "FOLLOWER_COLLECTION_STATE_FILE", str(state_file))
+    monkeypatch.setattr(config, "FOLLOWER_COLLECTION_TIMES", ((12, 0), (23, 59)))
+    state_file.write_text(
+        '{"2026-09-25":{"12:00":{"attempts":1,"success":true},'
+        '"23:59":{"attempts":2,"success":false}}}',
+        encoding="utf-8",
+    )
+
+    now = datetime(2026, 9, 25, 23, 59, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+    assert due_follower_slot(now) is None
