@@ -90,7 +90,7 @@ def due_follower_slot(now: datetime | None = None) -> str | None:
             slot = f"{hour:02d}:{minute:02d}"
             entry = state.get(day, {}).get(slot, {})
             has_attempt = day == current_day or entry.get("attempts", 0) > 0
-            if candidate_time >= slot_at and has_attempt and not entry.get("success") and entry.get("attempts", 0) < 2:
+            if current >= slot_at and has_attempt and not entry.get("success") and entry.get("attempts", 0) < 2:
                 return slot
     return None
 
