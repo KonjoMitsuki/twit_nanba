@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "data-analysis": {
+      "source": "seb1n/awesome-ai-agent-skills",
+      "sourceType": "github",
+      "skillPath": "data-and-analytics/data-analysis/SKILL.md",
+      "computedHash": "023df5455bde8e0688b43eb003453fcf2ebba152ef1144e464df71bc66bb4bdb"
+    },
+    "fastapi": {
+      "source": "fastapi/fastapi",
+      "sourceType": "github",
+      "skillPath": "fastapi/.agents/skills/fastapi/SKILL.md",
+      "computedHash": "61ced71839a7ac17d03474a60df84c80c04f09bf3070f9cf2e54d0a2f831a326"
+    },
+    "python-performance-optimization": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-performance-optimization/SKILL.md",
+      "computedHash": "1263ae7d2cc7bc5e481c754df4033a44efaa028d5659171000465507544a0b74"
+    },
+    "python-testing-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-testing-patterns/SKILL.md",
+      "computedHash": "a0c0cd2841eb80fc082b360ebbee1ad69275234229e525a6da1baaee3f5a52bd"
+    },
+    "sqlite-best-practices": {
+      "source": "erayack/sqlite-best-practices",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "1fed11dc2aead8a3bf2b72211cedbdc37ae7b9ef856855293c4109ac4f832f1a"
+    }
+  }
+}
