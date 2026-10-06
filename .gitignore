@@ -37,3 +37,6 @@ Thumbs.db
 *.log
 cron.logj.process.lock
 .process.lock
+
+#data
+data/character.csv
