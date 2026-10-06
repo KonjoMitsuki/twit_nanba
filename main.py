@@ -34,7 +34,13 @@ from storage import app_db, fans_db, backup_db
 from scraper.browser import create_browser_context, random_wait
 from scraper.metrics import fetch_metrics
 from scraper.fans import fetch_likers
-from scraper.auto_detect import should_check_now, check_new_art_post
+from scraper.auto_detect import (
+    check_new_art_post,
+    due_follower_slot,
+    mark_follower_attempt,
+    mark_follower_success,
+    should_check_now,
+)
 from scraper.poster import post_tweet, _extract_hashtags
 
 # ロギング設定
@@ -208,8 +214,6 @@ async def process_artwork(
                 followers=metrics.get("followers"),
                 new_fans_count=len(stage_new_fans),
             )
-            if metrics.get("followers") is not None:
-                app_db.add_account_metric(metrics["followers"], measured_at)
             logger.info("App DB スナップショット保存成功: artwork=%s stage=%s", app_artwork_id, current_status)
         except Exception as e:
             logger.error("App DB スナップショット保存失敗: %s", e)
@@ -283,7 +287,8 @@ async def run(headless: bool = True) -> None:
         logger.error("予約投稿の取得に失敗: %s", e)
 
     # ─── 1. 新着チェックが必要か判定 ───
-    need_auto_detect = should_check_now()
+    follower_slot_due = due_follower_slot()
+    need_auto_detect = should_check_now() or follower_slot_due is not None
     need_scheduled_posts = bool(scheduled_posts)
 
     # ─── 2. 対象作品の取得 ───
@@ -432,10 +437,20 @@ async def run(headless: bool = True) -> None:
         # プロフィールを確認し、無駄なブラウザ起動を削減する
         if need_auto_detect:
             try:
-                detected = await check_new_art_post(
+                follower_slot = mark_follower_attempt() if follower_slot_due else None
+                result = await check_new_art_post(
                     page, config.X_SCREEN_NAME
                 )
-                if detected:
+                if follower_slot and result.followers is not None:
+                    measured_at = datetime.now(timezone.utc).isoformat()
+                    app_db.add_account_metric(result.followers, measured_at)
+                    mark_follower_success(follower_slot)
+                    logger.info(
+                        "フォロワー集計保存成功: slot=%s followers=%d",
+                        follower_slot,
+                        result.followers,
+                    )
+                if result.detected:
                     # 新規登録が行われた場合、対象作品リストを再取得
                     # （次回のcron実行で拾われるので、ここでは再取得不要）
                     logger.info(

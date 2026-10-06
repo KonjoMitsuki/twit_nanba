@@ -145,6 +145,17 @@ AUTO_DETECT_FIXED_CHECK_TIMES: tuple[tuple[int, int], ...] = (
     (17, 1),
 )
 
+# フォロワー集計の固定時刻（JST）。プロフィール確認と同じアクセスを利用する。
+FOLLOWER_COLLECTION_TIMES: tuple[tuple[int, int], ...] = (
+    (12, 0),
+    (23, 59),
+)
+
+# フォロワー集計の成功・試行状態を保存するファイルパス
+FOLLOWER_COLLECTION_STATE_FILE: str = str(
+    Path(__file__).parent / ".daily_follower_collect"
+)
+
 # 最終チェック時刻の永続化ファイルパス
 AUTO_DETECT_STATE_FILE: str = str(
     Path(__file__).parent / ".auto_detect_last_check"

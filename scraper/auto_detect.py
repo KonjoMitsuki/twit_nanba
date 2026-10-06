@@ -16,10 +16,13 @@ scraper/auto_detect.py — 新着イラスト自動検知モジュール
 - 投稿から 31分以上           → 最も近い未来のステージからスタート
 """
 
+import json
 import logging
 import random
 import re
 import time
+from dataclasses import dataclass
+from typing import Any
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -33,9 +36,92 @@ from processing.character_mapper import character_for_tags
 from processing.scheduler import calculate_next_schedule
 from storage import backup_db
 from storage import app_db
+from scraper.profile import fetch_profile_followers
 
 logger = logging.getLogger("auto_detect")
 JST = ZoneInfo("Asia/Tokyo")
+
+
+@dataclass
+class ProfileCheckResult:
+    detected: bool
+    followers: int | None
+
+
+def _follower_state() -> dict[str, dict[str, dict[str, bool | int]]]:
+    state_file = Path(config.FOLLOWER_COLLECTION_STATE_FILE)
+    if not state_file.exists():
+        return {}
+    try:
+        state = json.loads(state_file.read_text())
+        return state if isinstance(state, dict) else {}
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning("フォロワー集計状態の読み込み失敗: %s", e)
+        return {}
+
+
+def _save_follower_state(state: dict[str, Any]) -> None:
+    state_file = Path(config.FOLLOWER_COLLECTION_STATE_FILE)
+    try:
+        state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+    except OSError as e:
+        logger.error("フォロワー集計状態の書き込み失敗: %s", e)
+
+
+def due_follower_slot(now: datetime | None = None) -> str | None:
+    """現在時刻までに到来し、未完了かつ試行回数が2回未満の枠を返す。"""
+    current = now or datetime.now(JST)
+    state = _follower_state()
+    current_day = current.strftime("%Y-%m-%d")
+    candidates = [(current.date(), current_day)]
+    previous = current.date().fromordinal(current.date().toordinal() - 1)
+    candidates.append((previous, previous.isoformat()))
+    for candidate_date, day in candidates:
+        for hour, minute in config.FOLLOWER_COLLECTION_TIMES:
+            slot_at = current.replace(
+                year=candidate_date.year,
+                month=candidate_date.month,
+                day=candidate_date.day,
+                hour=hour,
+                minute=minute,
+                second=0,
+                microsecond=0,
+            )
+            slot = f"{hour:02d}:{minute:02d}"
+            entry = state.get(day, {}).get(slot, {})
+            has_attempt = day == current_day or entry.get("attempts", 0) > 0
+            if candidate_time >= slot_at and has_attempt and not entry.get("success") and entry.get("attempts", 0) < 2:
+                return slot
+    return None
+
+
+def mark_follower_attempt(now: datetime | None = None) -> str | None:
+    slot = due_follower_slot(now)
+    if slot is None:
+        return None
+    current = now or datetime.now(JST)
+    state = _follower_state()
+    day = current.strftime("%Y-%m-%d")
+    if slot not in state.get(day, {}):
+        previous = current.date().fromordinal(current.date().toordinal() - 1).isoformat()
+        if state.get(previous, {}).get(slot, {}).get("attempts", 0) > 0:
+            day = previous
+    entry = state.setdefault(day, {}).setdefault(slot, {})
+    entry["attempts"] = int(entry.get("attempts", 0)) + 1
+    _save_follower_state(state)
+    return slot
+
+
+def mark_follower_success(slot: str, now: datetime | None = None) -> None:
+    current = now or datetime.now(JST)
+    state = _follower_state()
+    day = current.strftime("%Y-%m-%d")
+    entry = state.get(day, {}).get(slot)
+    if not entry or entry.get("success"):
+        previous = current.date().fromordinal(current.date().toordinal() - 1).isoformat()
+        day = previous
+    state.setdefault(day, {}).setdefault(slot, {})["success"] = True
+    _save_follower_state(state)
 
 
 # ─── 間隔制御 ─────────────────────────────────────────────────
@@ -310,7 +396,7 @@ async def _extract_tweet_info(tweet_element) -> dict | None:
 async def check_new_art_post(
     page: Page,
     screen_name: str | None = None,
-) -> bool:
+) -> ProfileCheckResult:
     """プロフィール画面をチェックし、新しいイラスト投稿をNotionに自動登録する。
 
     【フロー】
@@ -324,7 +410,7 @@ async def check_new_art_post(
         screen_name: 監視対象のスクリーンネーム。省略時は config から取得。
 
     Returns:
-        bool: 新規イラストを検知・登録した場合 True。
+        ProfileCheckResult: 新着検知結果とプロフィールのフォロワー数。
     """
     _screen_name = screen_name or config.X_SCREEN_NAME
     if not _screen_name:
@@ -332,7 +418,7 @@ async def check_new_art_post(
             "X_SCREEN_NAME が設定されていません。"
             ".env に X_SCREEN_NAME=あなたのID を追加してください。"
         )
-        return False
+        return ProfileCheckResult(False, None)
 
     profile_url = f"https://x.com/{_screen_name}"
     logger.info("🔍 プロフィール確認: %s", profile_url)
@@ -344,10 +430,7 @@ async def check_new_art_post(
     for attempt, timeout_sec in enumerate(profile_timeouts, start=1):
         try:
             await page.goto(profile_url, wait_until="domcontentloaded")
-            await page.wait_for_selector(
-                "article[data-testid='tweet']",
-                timeout=timeout_sec * 1000,
-            )
+            await page.wait_for_selector("main", timeout=timeout_sec * 1000)
             break
         except Exception as e:
             if attempt < len(profile_timeouts):
@@ -361,7 +444,9 @@ async def check_new_art_post(
                 continue
             logger.error("プロフィールページの読み込みに失敗: %s", e)
             save_last_check_time()  # 失敗してもタイマーリセット（連続リトライ防止）
-            return False
+            return ProfileCheckResult(False, None)
+
+    followers = await fetch_profile_followers(page, _screen_name)
 
     # 最新ツイートを上から走査（最大5件）
     tweets = page.locator("article[data-testid='tweet']")
@@ -469,9 +554,9 @@ async def check_new_art_post(
         )
 
         save_last_check_time()
-        return True
+        return ProfileCheckResult(True, followers)
 
     # 画像付きオリジナルツイートが見つからなかった
     logger.info("ℹ️ 新しいイラスト投稿は検出されませんでした")
     save_last_check_time()
-    return False
+    return ProfileCheckResult(False, followers)
