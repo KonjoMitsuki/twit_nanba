@@ -19,12 +19,22 @@ from playwright.async_api import Page, Response
 logger = logging.getLogger("poster")
 
 # テキストエリアのセレクタ（モーダル・インライン両対応）
-TEXTAREA_SELECTOR = (
-    '[data-testid="tweetTextarea_0"], '
-    '[data-testid="tweetTextarea_0_label"], '
-    'div[role="textbox"][contenteditable="true"], '
-    'div.public-DraftEditor-content'
-)
+def _get_compose_input_selectors() -> list[str]:
+    """X の投稿入力欄候補を優先順で返す。
+
+    テストや将来のセレクタ更新でも単一の定義を共有できるようにする。
+    """
+    return [
+        'div[data-testid="tweetTextarea_0"]',
+        '[data-testid="tweetTextarea_0"]',
+        '[data-testid="tweetTextarea_0_label"]',
+        'div[role="textbox"][contenteditable="true"]',
+        'textarea',
+        'div.public-DraftEditor-content',
+    ]
+
+
+TEXTAREA_SELECTOR = ", ".join(_get_compose_input_selectors())
 
 # 投稿ボタンのセレクタ
 TWEET_BUTTON_SELECTOR = (
