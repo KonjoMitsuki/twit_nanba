@@ -1,0 +1,194 @@
+.icon-button,
+.today-button,
+.x-link {
+  min-width: 42px;
+  height: 42px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.today-button {
+  padding: 0 17px;
+}
+
+.x-link {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+}
+
+.icon-button:hover,
+.today-button:hover,
+.x-link:hover {
+  background: var(--lime);
+}
+
+.profile-link {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 0.75rem;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 30px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.kpis div {
+  padding: 15px;
+  border-right: 1px solid var(--line);
+}
+
+.kpis div:last-child {
+  border: 0;
+}
+
+.kpis span {
+  display: block;
+  color: var(--muted);
+  font: 500 0.67rem var(--font-mono);
+  letter-spacing: 0.1em;
+}
+
+.kpis strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 1.45rem;
+}
+
+.metric-tabs,
+.mode-tabs {
+  display: flex;
+  gap: 5px;
+}
+
+.metric-tabs button,
+.mode-tabs button {
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  font: 0.72rem var(--font-mono);
+  cursor: pointer;
+}
+
+.metric-tabs button.active,
+.mode-tabs button.active {
+  background: var(--lime);
+}
+
+.detail-image > img,
+.carousel-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.carousel-image {
+  display: block;
+}
+
+.carousel-button {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--ink);
+  background: rgba(255, 255, 255, 0.88);
+  font: inherit;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.carousel-button:hover {
+  background: var(--lime);
+}
+
+.carousel-button.previous {
+  left: 12px;
+}
+
+.carousel-button.next {
+  right: 12px;
+}
+
+.carousel-indicators {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  display: flex;
+  gap: 7px;
+  transform: translateX(-50%);
+}
+
+.carousel-dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  background: var(--white);
+  cursor: pointer;
+}
+
+.carousel-dot.active {
+  background: var(--coral);
+}
+
+.carousel-position {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 3px 7px;
+  background: rgba(255, 255, 255, 0.88);
+  font: 0.7rem var(--font-mono);
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 20;
+  min-width: 200px;
+  max-width: 240px;
+  padding: 10px 12px;
+  border: 1px solid rgba(32, 34, 30, 0.22);
+  border-radius: 10px;
+  background: rgba(32, 34, 30, 0.94);
+  box-shadow: 0 12px 28px rgba(32, 34, 30, 0.18);
+  color: #f7f7f2;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+}
+
+.chart-tooltip-header {
+  margin-bottom: 8px;
+  color: var(--lime);
+  font: 600 0.6rem var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chart-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding-top: 4px;
+  font: 12px var(--font-mono);
+}
+
+.chart-tooltip-row span {
+  color: rgba(247, 247, 242, 0.7);
+}
+
+.chart-tooltip-row strong {
+  color: #fff;
+  font-weight: 500;
+}
