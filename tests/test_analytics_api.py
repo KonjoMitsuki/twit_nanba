@@ -218,3 +218,39 @@ def test_table_grouping_rejects_unknown_fields_and_preserves_legacy_sort(client)
             ).status_code
             == 200
         )
+
+
+def test_scatter_can_be_saved_and_queried_without_login(client):
+    headers = profile_headers(client)
+    config = {
+        "panels": [
+            {
+                "id": "scatter_1",
+                "chart": "scatter",
+                "x": "impressions",
+                "y": ["likes"],
+                "series": "character",
+            }
+        ]
+    }
+    response = client.post(
+        "/api/analytics/views",
+        headers=headers,
+        json={"name": "散布図", "config": config},
+    )
+    assert response.status_code == 201
+    views = client.get("/api/analytics/views", headers=headers).json()["views"]
+    assert views[0]["config"]["panels"][0]["chart"] == "scatter"
+    assert (
+        client.post(
+            "/api/analytics/query", headers=headers, json=config["panels"][0]
+        ).status_code
+        == 200
+    )
+    config["panels"][0]["x"] = "title"
+    assert (
+        client.post(
+            "/api/analytics/query", headers=headers, json=config["panels"][0]
+        ).status_code
+        == 422
+    )

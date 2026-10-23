@@ -19,6 +19,8 @@
     table:
       '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/>',
     line: '<path d="M3 3v18h18M6 15l5-7 4 3 5-6"/>',
+    scatter:
+      '<path d="M3 3v18h18"/><circle cx="7" cy="15" r="1"/><circle cx="11" cy="9" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="19" cy="5" r="1"/>',
     pie: '<path d="M12 3v9h9A9 9 0 1 1 12 3Z"/><path d="M15 2v7h7a9 9 0 0 0-7-7Z"/>',
     box: '<path d="M3 12h18M5 8v8m14-8v8M8 7h8v10H8Zm4 0v10"/>',
     histogram:
@@ -59,6 +61,7 @@
     table: "テーブル",
     line: "折れ線グラフ",
     pie: "円グラフ",
+    scatter: "散布図",
     box: "箱ひげ図",
     histogram: "ヒストグラム",
   };
@@ -547,7 +550,7 @@
     $("#panels").innerHTML = visible
       .map(
         (panel) =>
-          `<article class="panel ${panel.chart === "table" ? "is-table" : ""}" data-panel="${esc(panel.id)}"><div class="panel-head"><div class="panel-title">${icon(panel.chart)}<h2>${esc(panel.title)}</h2></div><div class="panel-controls"><button class="icon-button" data-move="-1" aria-label="このパネルを前へ">${icon("up")}</button><button class="icon-button" data-move="1" aria-label="このパネルを後ろへ">${icon("down")}</button><button class="icon-button" data-settings aria-label="${esc(panel.title)}の設定">${icon("settings")}</button><button class="icon-button" data-remove aria-label="${esc(panel.title)}を削除">${icon("close")}</button></div></div><div class="panel-meta">${esc(sourceNames[panel.source])} · ${panel.source === "artworks" ? esc(panel.stage) + "時点 · " : ""}${panel.chart === "table" ? "元データ" : ["box", "histogram"].includes(panel.chart) ? "分布" : esc(aggregates[panel.aggregate])} · ${panel.period_days ? "直近" + panel.period_days + "日" : panel.from_date || panel.to_date ? "指定期間" : "全期間"}</div><div class="chart-container"><div class="loading">集計中…</div></div><div class="panel-footnote"></div></article>`,
+          `<article class="panel ${panel.chart === "table" ? "is-table" : ""}" data-panel="${esc(panel.id)}"><div class="panel-head"><div class="panel-title">${icon(panel.chart)}<h2>${esc(panel.title)}</h2></div><div class="panel-controls"><button class="icon-button" data-move="-1" aria-label="このパネルを前へ">${icon("up")}</button><button class="icon-button" data-move="1" aria-label="このパネルを後ろへ">${icon("down")}</button><button class="icon-button" data-settings aria-label="${esc(panel.title)}の設定">${icon("settings")}</button><button class="icon-button" data-remove aria-label="${esc(panel.title)}を削除">${icon("close")}</button></div></div><div class="panel-meta">${esc(sourceNames[panel.source])} · ${panel.source === "artworks" ? esc(panel.stage) + "時点 · " : ""}${["table", "scatter"].includes(panel.chart) ? "元データ" : ["box", "histogram"].includes(panel.chart) ? "分布" : esc(aggregates[panel.aggregate])} · ${panel.period_days ? "直近" + panel.period_days + "日" : panel.from_date || panel.to_date ? "指定期間" : "全期間"}</div><div class="chart-container"><div class="loading">集計中…</div></div><div class="panel-footnote"></div></article>`,
       )
       .join("");
     $("#panels")
@@ -879,7 +882,7 @@
           input("period_days", p.period_days, "number", 'min="0" max="3660"'),
         ) +
         `<div class="field-grid">${labelField("開始日", input("from_date", p.from_date, "date"))}${labelField("終了日", input("to_date", p.to_date, "date"))}</div>`;
-      if (!["table", "pie"].includes(p.chart))
+      if (!["table", "pie", "scatter"].includes(p.chart))
         html += `<label class="toggle-label"><input type="checkbox" data-field="compare_previous" ${p.compare_previous ? "checked" : ""}>前の同じ長さの期間と比較</label><p class="settings-help">日付軸では前期間を現在の期間に揃えて重ねます。日数または開始・終了日を指定してください。</p>`;
     } else if (state.tab === "axes") {
       const all = fieldOptions(p, { rowOnly: true }),
@@ -899,9 +902,32 @@
           )}</div><p class="settings-help">列見出しをタップすると並べ替えできます。元データはキャラクターだけ編集できます。</p>`;
       } else {
         if (p.chart !== "histogram")
-          html += labelField("横軸・分類", select("x", p.x, all));
+          html += labelField(
+            "横軸・分類",
+            select(
+              "x",
+              p.x,
+              p.chart === "scatter"
+                ? Object.fromEntries(
+                    Object.entries(all).filter(
+                      ([key]) =>
+                        state.metadata.sources[p.source].some(
+                          (field) =>
+                            field.key === key &&
+                            ["number", "date"].includes(field.type),
+                        ) ||
+                        p.formulas.some(
+                          (f) => f.key === key && f.scope === "row",
+                        ),
+                    ),
+                  )
+                : all,
+            ),
+          );
         html += `<div class="settings-field"><span class="field-label">${p.chart === "histogram" ? "分布を見る数値" : "縦軸・数値"}</span><div class="check-options">${Object.entries(
-          numbers,
+          p.chart === "scatter"
+            ? fieldOptions(p, { numeric: true, rowOnly: true })
+            : numbers,
         )
           .map(
             ([key, label]) =>
@@ -912,7 +938,7 @@
           "系列・色分け",
           select("series", p.series, { "": "色分けなし", ...all }),
         );
-        if (!["box", "histogram"].includes(p.chart))
+        if (!["box", "histogram", "scatter"].includes(p.chart))
           html += labelField(
             "集計方法",
             select("aggregate", p.aggregate, aggregates),
@@ -940,7 +966,23 @@
                 )
               : "");
       }
-      if (p.source !== "followers")
+      if (p.chart === "scatter")
+        html +=
+          '<p class="settings-help">1行を1点として表示します。同じ横軸の値も集計しません。座標が未計測の点は除外します。</p>';
+      if (p.chart === "scatter" && p.source !== "followers")
+        html += labelField(
+          "複数キャラの表示",
+          select(
+            "allocation",
+            p.allocation === "combination" ? "combination" : "full",
+            {
+              full: "各キャラの系列に表示",
+              combination: "組み合わせで色分け",
+            },
+          ),
+          "座標は元の値を使います。キャラ数による配分はしません。",
+        );
+      else if (p.source !== "followers")
         html += labelField(
           "複数キャラの数え方",
           select("allocation", p.allocation, {
@@ -1142,12 +1184,29 @@
             p.table_sorts = null;
             p.table_group = "";
             p.table_collapsed_groups = [];
+            if (p.chart === "scatter") p.x = "date";
             structural = true;
           }
           if (el.dataset.field === "chart") {
             p.transform = "none";
-            if (["pie", "table"].includes(p.chart)) p.compare_previous = false;
+            if (["pie", "table", "scatter"].includes(p.chart))
+              p.compare_previous = false;
             if (p.chart === "pie") p.y = p.y.slice(0, 1);
+            if (p.chart === "scatter") {
+              const validX =
+                state.metadata.sources[p.source].some(
+                  (f) => f.key === p.x && ["number", "date"].includes(f.type),
+                ) || p.formulas.some((f) => f.key === p.x && f.scope === "row");
+              if (!validX) p.x = "date";
+              const numericRows = fieldOptions(p, {
+                numeric: true,
+                rowOnly: true,
+              });
+              p.y = p.y.filter((key) => key in numericRows);
+              if (!p.y.length)
+                p.y = [p.source === "followers" ? "followers" : "likes"];
+              if (p.allocation === "split") p.allocation = "full";
+            }
             if (p.chart === "histogram") {
               p.x = p.y[0];
               p.series = "";
@@ -1326,6 +1385,8 @@
             if (!p.y.length)
               p.y = [p.source === "followers" ? "followers" : "likes"];
             p.columns = p.columns.filter((v) => v !== key);
+            if (p.x === key) p.x = "date";
+            if (p.series === key) p.series = "";
             if (p.table_group === key) {
               p.table_group = "";
               p.table_collapsed_groups = [];

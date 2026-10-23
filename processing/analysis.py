@@ -232,6 +232,13 @@ def validate_panel(panel: Panel):
         raise ValueError("このデータ種類で使用できる横軸・系列を選択してください")
     if any(key not in row_names | group_names for key in panel.y):
         raise ValueError("縦軸には数値列または計算列を選択してください")
+    if panel.chart == "scatter":
+        if panel.x not in row_names and fields.get(panel.x, (None, None))[1] != "date":
+            raise ValueError(
+                "散布図の横軸には数値列・日付列・行ごとの計算列を選択してください"
+            )
+        if any(key in group_names for key in panel.y):
+            raise ValueError("散布図の縦軸には行ごとの数値を使用してください")
     if panel.chart in {"box", "histogram"} and any(
         key in group_names for key in panel.y
     ):
@@ -276,7 +283,7 @@ def validate_panel(panel: Panel):
         raise ValueError(
             "前期間比較では直近の日数、または開始日と終了日を指定してください"
         )
-    if panel.compare_previous and panel.chart in {"table", "pie"}:
+    if panel.compare_previous and panel.chart in {"table", "pie", "scatter"}:
         raise ValueError("前期間比較は折れ線・箱ひげ図・ヒストグラムで使用できます")
     return trees
 
@@ -449,7 +456,11 @@ def query(panel: Panel, *, now=None, rows=None):
         for character in expand:
             expanded = row | {"character": character}
             x = expanded.get(panel.x)
-            if x is None:
+            if x is None or (
+                panel.chart == "scatter"
+                and isinstance(x, (int, float))
+                and not math.isfinite(x)
+            ):
                 missing_metric.add(row["row_id"])
                 continue
             if isinstance(x, list):
@@ -477,6 +488,27 @@ def query(panel: Panel, *, now=None, rows=None):
                 buckets[(x, label, y)].append((expanded, weight))
     group_keys = {f.key for f in panel.formulas if f.scope == "group"}
     for (x, series, y), items in buckets.items():
+        if panel.chart == "scatter":
+            for row, _ in items:
+                value = row.get(y)
+                if not isinstance(value, (int, float)) or not math.isfinite(value):
+                    missing_metric.add(row["row_id"])
+                    continue
+                output["points"].append(
+                    {
+                        "x": x,
+                        "y": value,
+                        "series": series,
+                        "metric": y,
+                        "n": 1,
+                        "row_id": row["row_id"],
+                        "artwork_id": row.get("artwork_id"),
+                        "label": row.get("title")
+                        or row.get("measured_at")
+                        or str(row["row_id"]),
+                    }
+                )
+            continue
         if y in group_keys:
             # Fractional allocation applies to contributions of every aggregate operand.
             values = {
@@ -596,11 +628,17 @@ def query(panel: Panel, *, now=None, rows=None):
         )
     elif sort == "x_desc":
         output["points"].reverse()
-    if needs_char and panel.allocation == "full":
+    if panel.chart == "scatter" and needs_char:
+        output["warnings"].append(
+            "複数キャラの色分けでは同じ点を各キャラに表示します。座標は配分せず元の値を使用します。"
+            if panel.allocation != "combination"
+            else "複数キャラの組み合わせごとに色分けします。座標は元の値を使用します。"
+        )
+    elif needs_char and panel.allocation == "full":
         output["warnings"].append(
             "複数キャラ作品は各キャラに全量計上しています。キャラ別合計には重複を含みます。"
         )
-    if panel.allocation == "split" and needs_char:
+    if panel.chart != "scatter" and panel.allocation == "split" and needs_char:
         output["warnings"].append(
             "均等配分：件数・合計は1÷キャラ数で配分。平均・分位数は同じ重みによる加重統計です。"
         )

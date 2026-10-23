@@ -64,7 +64,7 @@ class TableSort(StrictModel):
 class Panel(StrictModel):
     id: str = Field(default="panel_1", max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")
     title: str = Field(default="キャラクター別の成績", max_length=120)
-    chart: Literal["table", "line", "pie", "box", "histogram"] = "line"
+    chart: Literal["table", "line", "pie", "box", "histogram", "scatter"] = "line"
     source: Literal["artworks", "snapshots", "followers"] = "artworks"
     stage: str = Field(default="24h", max_length=10)
     x: str = Field(default="character", max_length=60)

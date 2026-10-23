@@ -85,7 +85,7 @@
     const text = (x, y, value, attrs = "") =>
       `<text x="${x}" y="${y}" ${attrs}>${esc(value)}</text>`;
     const tip = (p) =>
-      `${p.x} · ${p.series ? p.series + " · " : ""}${result.fields[p.metric] || p.metric}: ${fmt(p.y)}${p.n ? " / " + p.n + "件" : ""}`;
+      `${p.label ? p.label + " · " : ""}${p.x} · ${p.series ? p.series + " · " : ""}${result.fields[p.metric] || p.metric}: ${fmt(p.y)}${p.n ? " / " + p.n + "件" : ""}`;
     const interactive = (content, message) =>
       `<g tabindex="0" role="img" aria-label="${esc(message)}" data-tip="${esc(message)}"><title>${esc(message)}</title>${content}</g>`;
     if (panel.chart === "pie") {
@@ -261,6 +261,13 @@
                 );
             });
         });
+      } else if (panel.chart === "scatter") {
+        points.forEach((p) => {
+          svg += interactive(
+            `<circle cx="${xs(p.x)}" cy="${ys(p.y)}" r="12" fill="transparent"/><circle class="scatter-point" cx="${xs(p.x)}" cy="${ys(p.y)}" r="5" fill="${colorFor(p)}" fill-opacity=".65" stroke="white" stroke-width="1"/>`,
+            tip(p),
+          );
+        });
       } else if (panel.chart === "box") {
         const step = pw / Math.max(xValues.length, 1),
           boxW = Math.max(
@@ -297,10 +304,10 @@
       .slice(0, 200)
       .map(
         (p) =>
-          `<tr><td>${esc(p.x)}</td><td>${esc(p.series || result.fields[p.metric])}</td><td>${esc(fmt(p.y))}</td>${panel.chart === "box" ? `<td>${fmt(p.median)}</td><td>${fmt(p.q1)} / ${fmt(p.q3)}</td>` : ""}</tr>`,
+          `<tr>${panel.chart === "scatter" ? `<td>${esc(p.label)}</td>` : ""}<td>${esc(p.x)}</td><td>${esc(p.series || result.fields[p.metric])}</td><td>${esc(fmt(p.y))}</td>${panel.chart === "box" ? `<td>${fmt(p.median)}</td><td>${fmt(p.q1)} / ${fmt(p.q3)}</td>` : ""}</tr>`,
       )
       .join("");
-    host.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(panel.title)}。詳細な数値は下の集計データから確認できます。">${svg}</svg><p class="chart-tooltip" aria-live="polite">点や図形をタップすると数値を確認できます</p>${panel.style.legend ? `<div class="chart-legend">${legendUnique.map((item, i) => `<button type="button" data-legend="${esc(item.key)}" aria-pressed="${!hidden.has(item.key)}" style="opacity:${hidden.has(item.key) ? ".4" : "1"}"><span class="legend-swatch" style="background:${palette[i % palette.length]}"></span>${esc(item.label)}</button>`).join("")}</div>` : ""}<details class="chart-data"><summary>集計データを見る（${all.length}点）</summary><div class="table-scroll"><table><thead><tr><th>横軸</th><th>系列</th><th>値</th>${panel.chart === "box" ? "<th>中央値</th><th>Q1 / Q3</th>" : ""}</tr></thead><tbody>${dataRows}</tbody></table></div>${all.length > 200 ? "<p>最初の200点を表示。条件を絞ると詳細を確認できます。</p>" : ""}</details>`;
+    host.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(panel.title)}。詳細な数値は下の集計データから確認できます。">${svg}</svg><p class="chart-tooltip" aria-live="polite">点や図形をタップすると数値を確認できます</p>${panel.style.legend ? `<div class="chart-legend">${legendUnique.map((item, i) => `<button type="button" data-legend="${esc(item.key)}" aria-pressed="${!hidden.has(item.key)}" style="opacity:${hidden.has(item.key) ? ".4" : "1"}"><span class="legend-swatch" style="background:${palette[i % palette.length]}"></span>${esc(item.label)}</button>`).join("")}</div>` : ""}<details class="chart-data"><summary>集計データを見る（${all.length}点）</summary><div class="table-scroll"><table><thead><tr>${panel.chart === "scatter" ? "<th>作品・計測</th>" : ""}<th>横軸</th><th>系列</th><th>値</th>${panel.chart === "box" ? "<th>中央値</th><th>Q1 / Q3</th>" : ""}</tr></thead><tbody>${dataRows}</tbody></table></div>${all.length > 200 ? "<p>最初の200点を表示。条件を絞ると詳細を確認できます。</p>" : ""}</details>`;
     const showTip = (event) => {
       const target = event.target.closest("[data-tip]");
       if (target)

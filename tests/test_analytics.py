@@ -275,3 +275,91 @@ def test_table_photos_are_ordered_and_present_without_the_selected_stage(
     snapshots = query(Panel(chart="table", source="snapshots"))["rows"]
     assert snapshots[0]["image_urls"] == urls
     assert Panel(chart="table").show_images is True
+
+
+def test_scatter_keeps_each_observation_with_the_same_x(dataset):
+    result = query(Panel(chart="scatter", x="impressions", aggregate="sum"))
+    assert sorted((p["x"], p["y"]) for p in result["points"]) == [
+        (1000, 100),
+        (1000, 200),
+    ]
+    assert len({p["row_id"] for p in result["points"]}) == 2
+    assert {p["label"] for p in result["points"]} == {"Art 0", "Art 1"}
+    assert result["excluded_count"] == 1
+    assert query(Panel(chart="scatter", x="date"))["points"][0]["x"] == "2026-10-02"
+    colored = query(
+        Panel(chart="scatter", x="impressions", series="character", allocation="split")
+    )
+    assert sorted((p["series"], p["y"]) for p in colored["points"]) == [
+        ("A", 100),
+        ("A", 200),
+        ("B", 100),
+    ]
+    combined = query(
+        Panel(
+            chart="scatter",
+            x="impressions",
+            series="character",
+            allocation="combination",
+        )
+    )
+    assert len(combined["points"]) == 2
+    assert {p["series"] for p in combined["points"]} == {"A", "A + B"}
+
+
+def test_scatter_row_formulas_missing_coordinates_and_point_limit():
+    rows = [
+        {
+            "row_id": str(i),
+            "date": "2026-10-02",
+            "likes": likes,
+            "impressions": impressions,
+        }
+        for i, (likes, impressions) in enumerate(
+            [(10, 100), (0, 100), (None, 100), (10, None)]
+        )
+    ]
+    panel = Panel(
+        chart="scatter",
+        source="snapshots",
+        x="calc_x",
+        y=["calc_y"],
+        formulas=[
+            {"key": "calc_x", "label": "X", "expression": "impressions / likes"},
+            {"key": "calc_y", "label": "Y", "expression": "likes - 20"},
+        ],
+    )
+    result = query(panel, rows=rows)
+    assert [(p["x"], p["y"]) for p in result["points"]] == [(10, -10)]
+    assert result["excluded_count"] == 3
+    zero = query(Panel(chart="scatter", source="snapshots", x="likes"), rows=rows)
+    assert any(p["x"] == p["y"] == 0 for p in zero["points"])
+    with pytest.raises(ValueError, match="2,500"):
+        query(
+            Panel(chart="scatter", source="snapshots", x="likes"),
+            rows=[rows[0] | {"row_id": str(i)} for i in range(2501)],
+        )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"x": "character"},
+        {
+            "y": ["calc_group"],
+            "formulas": [
+                {
+                    "key": "calc_group",
+                    "label": "集計",
+                    "scope": "group",
+                    "expression": "sum(likes)",
+                }
+            ],
+        },
+        {"compare_previous": True, "period_days": 7},
+        {"transform": "delta"},
+    ],
+)
+def test_scatter_rejects_incompatible_axes_and_transforms(overrides):
+    with pytest.raises(ValueError):
+        query(Panel(**({"chart": "scatter", "x": "date"} | overrides)), rows=[])

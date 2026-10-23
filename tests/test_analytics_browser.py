@@ -241,9 +241,11 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
                 == "broken"
             )
             with another.expect_response(
-                lambda response: "/api/analytics/views/" in response.url
-                and response.request.method == "PATCH"
-                and response.status == 200
+                lambda response: (
+                    "/api/analytics/views/" in response.url
+                    and response.request.method == "PATCH"
+                    and response.status == 200
+                )
             ):
                 first.locator("summary").click()
             another.wait_for_function(
@@ -329,6 +331,60 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             )
             another.locator('[data-page="1"]').click()
             assert another.locator(".table-group").count() == 2
+            another.unroute("**/api/analytics/query", paged_result)
+            another.set_viewport_size({"width": 1440, "height": 1000})
+            another.on("pageerror", lambda error: errors.append(str(error)))
+            another.get_by_role("button", name="作品テーブルの設定", exact=True).click()
+            another.get_by_label("表示形式", exact=True).select_option("scatter")
+            another.get_by_role("button", name="軸・集計", exact=True).click()
+            another.get_by_label("横軸・分類", exact=True).select_option("likes")
+            another.get_by_label("系列・色分け", exact=True).select_option("character")
+            assert another.get_by_label("集計方法", exact=True).count() == 0
+            another.wait_for_function(
+                "document.querySelectorAll('.scatter-point').length === 4"
+            )
+            another.wait_for_function(
+                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
+            )
+            another.keyboard.press("Escape")
+            another.reload()
+            another.wait_for_function(
+                "document.querySelectorAll('.scatter-point').length === 4"
+            )
+            assert another.locator(".chart-svg path[stroke-width='2.2']").count() == 0
+            another.locator('[data-tip^="broken"]').click()
+            assert (
+                "broken" in another.locator(".chart-tooltip").inner_text()
+                or "photo" in another.locator(".chart-tooltip").inner_text()
+            )
+            another.locator("[data-legend='B|likes']").click()
+            assert another.locator(".scatter-point").count() == 3
+            another.get_by_role("button", name="作品テーブルの設定", exact=True).click()
+            another.get_by_role("button", name="軸・集計", exact=True).click()
+            assert (
+                another.get_by_label("横軸・分類", exact=True).input_value() == "likes"
+            )
+            another.get_by_role("button", name="見た目", exact=True).click()
+            another.get_by_label("横軸の最小値", exact=True).fill("0")
+            another.get_by_label("縦軸の最大値", exact=True).fill("40")
+            another.wait_for_function(
+                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
+            )
+            another.set_viewport_size({"width": 375, "height": 812})
+            another.keyboard.press("Escape")
+            another.reload()
+            another.wait_for_selector(".scatter-point")
+            another.get_by_role("button", name="作品テーブルの設定", exact=True).click()
+            another.get_by_role("button", name="見た目", exact=True).click()
+            assert another.get_by_label("横軸の最小値", exact=True).input_value() == "0"
+            assert (
+                another.get_by_label("縦軸の最大値", exact=True).input_value() == "40"
+            )
+            another.keyboard.press("Escape")
+            another.locator('[data-tip^="broken"]').click()
+            assert another.evaluate(
+                "document.documentElement.scrollWidth <= innerWidth"
+            )
             assert not errors
             browser.close()
     finally:
