@@ -451,3 +451,35 @@ def test_plot_artwork_context_is_only_attached_to_single_observations():
         rows=[{"row_id": "f1", "date": "2026-10-02", "followers": 100}],
     )
     assert followers["points"][0]["artwork"] is None
+
+
+def test_formula_bounds_intermediate_powers_and_rejects_array_arithmetic(monkeypatch):
+    import ast
+    import operator
+
+    from processing import analysis
+
+    calls = []
+
+    def limited_power(left, right):
+        calls.append((left, right))
+        assert len(calls) <= 2, "Oversized intermediate result reached another power"
+        return operator.pow(left, right)
+
+    monkeypatch.setitem(analysis.BIN_OPS, ast.Pow, limited_power)
+    assert (
+        evaluate(parse_formula("(((10 ** 12) ** 12) ** 12) ** 12", set()), {}) is None
+    )
+    assert len(calls) == 2
+
+    def reject_array_operation(left, right):
+        pytest.fail("Array arithmetic must be rejected before allocating a result")
+
+    for expression, operation in [
+        ("likes * 1000000000000", ast.Mult),
+        ("likes + likes", ast.Add),
+    ]:
+        monkeypatch.setitem(analysis.BIN_OPS, operation, reject_array_operation)
+        assert (
+            evaluate(parse_formula(expression, {"likes"}), {"likes": [10, 20]}) is None
+        )

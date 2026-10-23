@@ -134,11 +134,26 @@ def evaluate(node, values):
             return values.get(item.id)
         if isinstance(item, ast.BinOp):
             left, right = visit(item.left), visit(item.right)
-            if left is None or right is None:
+            # Aggregate operands are sample arrays: only aggregate functions may
+            # consume them. Never allow Python list repetition/concatenation.
+            if any(
+                not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or abs(value) > 1e100
+                for value in (left, right)
+            ):
                 return None
             if isinstance(item.op, ast.Pow) and abs(right) > 12:
                 return None
-            return BIN_OPS[type(item.op)](left, right)
+            result = BIN_OPS[type(item.op)](left, right)
+            # Bound every intermediate result, before another exponentiation.
+            return (
+                result
+                if isinstance(result, (int, float))
+                and math.isfinite(result)
+                and abs(result) <= 1e100
+                else None
+            )
         if isinstance(item, ast.UnaryOp):
             value = visit(item.operand)
             if value is None:
