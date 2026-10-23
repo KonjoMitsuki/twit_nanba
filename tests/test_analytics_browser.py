@@ -142,7 +142,7 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             character_page.wait_for_function(
                 "document.querySelectorAll('#character-suggestions li').length === 1"
             )
-            character_page.locator("#character-suggestions li").first.click()
+            character_page.press("#character-name", "Tab")
             assert (
                 character_page.locator(
                     ".character-chip-selected", has_text=suggestion_name

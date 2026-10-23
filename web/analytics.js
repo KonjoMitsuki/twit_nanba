@@ -2583,6 +2583,23 @@
   });
   $("#character-name").addEventListener("focus", renderCharacterSuggestions);
   $("#character-name").addEventListener("keydown", (event) => {
+    if (event.isComposing) return;
+    if (
+      event.key === "Tab" &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      event.target.value.trim() &&
+      !$("#character-suggestions").hidden &&
+      characterSuggestionNames.length
+    ) {
+      event.preventDefault();
+      addCharacter(
+        characterSuggestionNames[Math.max(0, characterActiveSuggestion)],
+      );
+      return;
+    }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       if (!characterSuggestionNames.length) renderCharacterSuggestions();
       if (!characterSuggestionNames.length) return;
