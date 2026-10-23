@@ -363,3 +363,40 @@ def test_scatter_row_formulas_missing_coordinates_and_point_limit():
 def test_scatter_rejects_incompatible_axes_and_transforms(overrides):
     with pytest.raises(ValueError):
         query(Panel(**({"chart": "scatter", "x": "date"} | overrides)), rows=[])
+
+
+def test_plot_artwork_context_is_only_attached_to_single_observations():
+    row = {
+        "row_id": "s1",
+        "artwork_id": "a1",
+        "title": "投稿A",
+        "date": "2026-10-02",
+        "stage": "24h",
+        "measured_at": "2026-10-03T00:00:00+00:00",
+        "likes": 100,
+        "retweets": 0,
+        "image_urls": ["https://example.com/a.jpg"],
+    }
+    panel = Panel(chart="scatter", source="snapshots", x="likes")
+    point = query(panel, rows=[row])["points"][0]
+    assert point["artwork"] == {
+        "id": "a1",
+        "row_id": "s1",
+        "title": "投稿A",
+        "image_urls": row["image_urls"],
+        "likes": 100,
+        "retweets": 0,
+        "stage": "24h",
+        "measured_at": row["measured_at"],
+    }
+    line = Panel(chart="line", source="snapshots", x="title")
+    assert query(line, rows=[row])["points"][0]["artwork"] == point["artwork"]
+    # An aggregate never inherits the first artwork's identity or counters.
+    other = row | {"row_id": "s2", "artwork_id": "a2"}
+    assert "artwork" not in query(line, rows=[row, other])["points"][0]
+    assert "artwork" not in query(line, rows=[row, row | {"row_id": "s2"}])["points"][0]
+    followers = query(
+        Panel(chart="scatter", source="followers", x="date", y=["followers"]),
+        rows=[{"row_id": "f1", "date": "2026-10-02", "followers": 100}],
+    )
+    assert followers["points"][0]["artwork"] is None

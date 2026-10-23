@@ -290,3 +290,38 @@ def test_axis_tick_settings_are_saved_and_validate_positive_intervals(client):
         ).status_code
         == 200
     )
+
+
+def test_post_plot_card_uses_requested_stage_and_images(client):
+    artwork_id = app_db.create_artwork(
+        tweet_id="card",
+        url="https://example.com/card",
+        title="カード用の投稿",
+        posted_at="2026-10-02T00:00:00+00:00",
+        image_urls=["https://example.com/art.jpg"],
+    )
+    for stage, likes, reposts in [("1h", 10, 0), ("24h", 100, 7)]:
+        app_db.add_metric_snapshot(
+            artwork_id,
+            stage=stage,
+            elapsed_seconds=3600 if stage == "1h" else 86400,
+            measured_at="2026-10-03T00:00:00+00:00",
+            likes=likes,
+            retweets=reposts,
+        )
+    headers = profile_headers(client)
+    for stage, likes, reposts in [("1h", 10, 0), ("24h", 100, 7)]:
+        response = client.post(
+            "/api/analytics/query",
+            headers=headers,
+            json={"chart": "scatter", "x": "likes", "stage": stage},
+        )
+        assert response.status_code == 200
+        artwork = response.json()["points"][0]["artwork"]
+        assert artwork["title"] == "カード用の投稿"
+        assert artwork["image_urls"] == ["https://example.com/art.jpg"]
+        assert (artwork["likes"], artwork["retweets"], artwork["stage"]) == (
+            likes,
+            reposts,
+            stage,
+        )

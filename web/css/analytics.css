@@ -933,7 +933,9 @@ dialog::backdrop {
   min-height: 40px;
   padding: 8px 11px;
   font-size: 13px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 .settings-field input:not([type="checkbox"]):not([type="color"]):focus,
 .settings-field select:focus,
@@ -2085,4 +2087,85 @@ dialog::backdrop {
 .chart-stage .chart-tooltip.is-scrollable {
   pointer-events: auto;
   overscroll-behavior: contain;
+}
+
+.chart-artwork-card {
+  display: grid;
+  grid-template-columns: minmax(68px, 100px) minmax(0, 1fr);
+  gap: 12px;
+  width: 262px;
+  max-width: 100%;
+  padding: 8px 0 10px;
+  margin-bottom: 5px;
+  border-bottom: 1px solid var(--line);
+}
+.chart-artwork-photo {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  height: 132px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.chart-artwork-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.chart-artwork-placeholder {
+  font-size: 10px;
+  text-align: center;
+  color: var(--muted);
+}
+.chart-artwork-image-count {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  padding: 1px 5px;
+  background: #323630d9;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.chart-artwork-info {
+  min-width: 0;
+}
+.chart-artwork-title {
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  margin: 0 0 9px;
+}
+.chart-artwork-metric {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  margin: 5px 0;
+}
+.chart-artwork-metric svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  flex: 0 0 auto;
+}
+.chart-artwork-metric strong {
+  margin-left: auto;
+  font-family: var(--mono);
+}
+.chart-artwork-stage {
+  display: block;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+
+.chart-stage .chart-tooltip:has(.chart-artwork-card) {
+  max-height: min(360px, 70vh);
 }

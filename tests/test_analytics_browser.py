@@ -352,6 +352,25 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             )
             assert another.locator(".chart-svg path[stroke-width='2.2']").count() == 0
             another.locator('[data-tip^="broken"]').click()
+            assert another.locator(".chart-artwork-title").inner_text() == "broken"
+            assert (
+                another.locator('.chart-artwork-metric[aria-label="いいね 20"]').count()
+                == 1
+            )
+            another.wait_for_function(
+                "document.querySelector('.chart-artwork-placeholder')?.hidden === false"
+            )
+            assert (
+                another.locator(".chart-artwork-placeholder").inner_text()
+                == "読み込めません"
+            )
+            another.locator('[data-tip^="photo"]').last.click()
+            another.wait_for_function(
+                "document.querySelector('.chart-artwork-photo img')?.naturalWidth > 0"
+            )
+            assert another.locator(".chart-artwork-title").inner_text() == "photo"
+            assert another.locator(".chart-artwork-image-count").inner_text() == "2枚"
+            another.locator('[data-tip^="broken"]').click()
             assert (
                 "broken" in another.locator(".chart-tooltip").inner_text()
                 or "photo" in another.locator(".chart-tooltip").inner_text()

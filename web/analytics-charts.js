@@ -419,13 +419,48 @@
         visibleX(p) &&
         (!view || (p.y >= view.ymin && p.y <= view.ymax)),
     );
+    const artworkCard = (artwork) => {
+      const urls = artwork.image_urls || [];
+      let src;
+      for (const candidate of urls) {
+        try {
+          const url = new URL(candidate, location.href);
+          if (!["https:", "http:"].includes(url.protocol)) continue;
+          if (url.hostname.endsWith(".twimg.com"))
+            url.searchParams.set("name", "small");
+          src = url.href;
+          break;
+        } catch {
+          /* Skip an invalid image reference. */
+        }
+      }
+      const heart =
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg>',
+        repost =
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 8 3-3 3 3M7 5v12h8m5-1-3 3-3-3m3 3V7H9"/></svg>';
+      const measured =
+        artwork.measured_at && Number.isFinite(Date.parse(artwork.measured_at))
+          ? new Date(artwork.measured_at).toLocaleString("ja-JP", {
+              timeZone: "Asia/Tokyo",
+            })
+          : "";
+      return `<article class="chart-artwork-card" data-artwork-card="${esc(artwork.id)}"><div class="chart-artwork-photo">${src ? `<img src="${esc(src)}" width="100" height="132" decoding="async" referrerpolicy="no-referrer" alt="${esc(artwork.title)}の投稿画像">` : ""}<span class="chart-artwork-placeholder" ${src ? "hidden" : ""}>${src ? "読み込めません" : "画像なし"}</span>${urls.length > 1 ? `<span class="chart-artwork-image-count">${urls.length}枚</span>` : ""}</div><div class="chart-artwork-info"><strong class="chart-artwork-title">${esc(artwork.title)}</strong><div class="chart-artwork-metric" aria-label="いいね ${esc(fmt(artwork.likes))}">${heart}<span>いいね</span><strong>${esc(fmt(artwork.likes))}</strong></div><div class="chart-artwork-metric" aria-label="リポスト ${esc(fmt(artwork.retweets))}">${repost}<span>リポスト</span><strong>${esc(fmt(artwork.retweets))}</strong></div><small class="chart-artwork-stage">${esc([artwork.stage ? artwork.stage + "時点" : "", measured].filter(Boolean).join(" · "))}</small></div></article>`;
+    };
     const showPoints = (selected, px, py, heading) => {
       if (!selected.length) {
         hide();
         return;
       }
+      const artworks = [
+        ...new Map(
+          selected
+            .filter((p) => p.artwork)
+            .map((p) => [`${p.artwork.id}:${p.artwork.row_id}`, p.artwork]),
+        ).values(),
+      ];
       const markup =
         `<strong class="chart-tooltip-header">${esc(heading)}</strong>` +
+        artworks.map(artworkCard).join("") +
         selected
           .map(
             (p) =>
@@ -433,6 +468,14 @@
           )
           .join("");
       display(markup, px, py);
+      tooltip.querySelectorAll(".chart-artwork-photo img").forEach((img) => {
+        const failed = () => {
+          img.hidden = true;
+          img.nextElementSibling.hidden = false;
+        };
+        img.onerror = failed;
+        if (img.complete && !img.naturalWidth) failed();
+      });
       const overlay = host.querySelector(".chart-inspection");
       if (overlay)
         overlay.innerHTML =

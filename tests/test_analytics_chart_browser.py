@@ -195,3 +195,62 @@ def test_touch_pinch_pan_and_inspect_mode():
         assert page.locator(".chart-tooltip-row").count() == 2
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         browser.close()
+
+
+def test_post_card_images_counters_safe_content_and_small_screen():
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(
+            executable_path=shutil.which("chromium"),
+            headless=True,
+            args=["--no-sandbox"],
+        )
+        page = browser.new_page(viewport={"width": 375, "height": 812})
+        page.route(
+            "https://example.test/art.svg",
+            lambda route: route.fulfill(
+                content_type="image/svg+xml",
+                body='<svg xmlns="http://www.w3.org/2000/svg" width="100" height="132"><rect width="100" height="132" fill="#447869"/></svg>',
+            ),
+        )
+        setup_chart(page, chart="scatter")
+        page.evaluate(
+            """() => { result.points = [{ x:10, y:100, metric:'y', label:'投稿名', artwork:{id:'a',row_id:'s',title:'<img src=x onerror=alert(1)>',image_urls:['https://example.test/art.svg','https://example.test/second.svg'],likes:100,retweets:0,stage:'24h'}}]; draw(); }"""
+        )
+        page.locator("[data-tip]").focus()
+        page.wait_for_function(
+            "document.querySelector('.chart-artwork-photo img')?.naturalWidth > 0"
+        )
+        assert (
+            page.locator(".chart-artwork-title").inner_text()
+            == "<img src=x onerror=alert(1)>"
+        )
+        assert page.locator(".chart-artwork-title img").count() == 0
+        assert (
+            page.locator('.chart-artwork-metric[aria-label="リポスト 0"]').count() == 1
+        )
+        assert page.locator(".chart-artwork-image-count").inner_text() == "2枚"
+        assert not page.locator(".chart-tooltip").evaluate(
+            "el => el.classList.contains('is-scrollable')"
+        )
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        bounds = page.locator(".chart-tooltip").bounding_box()
+        assert bounds["x"] >= 0 and bounds["x"] + bounds["width"] <= 375
+        page.evaluate(
+            "result.points[0].artwork.image_urls=['javascript:alert(1)']; result.points[0].artwork.likes=null;draw()"
+        )
+        page.locator("[data-tip]").focus()
+        assert page.locator(".chart-artwork-photo img").count() == 0
+        assert page.locator(".chart-artwork-placeholder").inner_text() == "画像なし"
+        assert (
+            page.locator('.chart-artwork-metric[aria-label="いいね 未計測"]').count()
+            == 1
+        )
+        page.evaluate(
+            "panel.chart='line'; result.points.push({...result.points[0],series:'B'}); draw()"
+        )
+        page.locator("[data-tip]").first.focus()
+        assert page.locator(".chart-artwork-card").count() == 1
+        assert page.locator(".chart-tooltip-row").count() == 2
+        browser.close()

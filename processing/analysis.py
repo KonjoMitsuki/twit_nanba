@@ -373,6 +373,22 @@ def aggregate(samples, method):
     )
 
 
+def artwork_context(row):
+    """The artwork and metrics for this observation, never a substituted latest value."""
+    if not row.get("artwork_id"):
+        return None
+    return {
+        "id": row["artwork_id"],
+        "row_id": row["row_id"],
+        "title": row.get("title") or "無題の投稿",
+        "image_urls": row.get("image_urls") or [],
+        "likes": row.get("likes"),
+        "retweets": row.get("retweets"),
+        "stage": row.get("stage"),
+        "measured_at": row.get("measured_at"),
+    }
+
+
 def query(panel: Panel, *, now=None, rows=None):
     trees = validate_panel(panel)
     today = now or datetime.now(app_db.JST).date()
@@ -503,6 +519,7 @@ def query(panel: Panel, *, now=None, rows=None):
                         "n": 1,
                         "row_id": row["row_id"],
                         "artwork_id": row.get("artwork_id"),
+                        "artwork": artwork_context(row),
                         "label": row.get("title")
                         or row.get("measured_at")
                         or str(row["row_id"]),
@@ -542,6 +559,9 @@ def query(panel: Panel, *, now=None, rows=None):
                     "samples": samples,
                 }
             )
+            # Only a single observation can identify a plotted post unambiguously.
+            if panel.chart == "line" and len(items) == 1:
+                output["points"][-1]["artwork"] = artwork_context(items[0][0])
         else:
             missing_metric.update(row["row_id"] for row, _ in items)
     output["excluded_count"] = len(missing) + len(missing_metric)
