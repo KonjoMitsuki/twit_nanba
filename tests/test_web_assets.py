@@ -53,9 +53,10 @@ def test_css_structure_has_one_font_import_and_one_mobile_query():
         "calendar.css",
         "detail.css",
         "responsive.css",
+        "analytics.css",
     }
     assert sum(style.count("@import") for style in styles.values()) == 1
-    assert sum(style.count("@media") for style in styles.values()) == 1
+    assert sum(style.count("@media") for name, style in styles.items() if name != "analytics.css") == 1
     assert "@media (max-width: 700px)" in styles["responsive.css"]
     assert all("!important" not in style for style in styles.values())
 

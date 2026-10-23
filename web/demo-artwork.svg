@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="デモ用サンプル画像">
+  <rect width="160" height="160" rx="8" fill="#ecf1e9"/>
+  <circle cx="113" cy="45" r="21" fill="#d5b16e"/>
+  <path d="M0 133 57 66 110 133Z" fill="#739687"/>
+  <path d="m63 133 54-54 43 54Z" fill="#a5b9a4"/>
+  <text x="80" y="151" text-anchor="middle" font-family="sans-serif" font-size="10" letter-spacing="3" fill="#496451">SAMPLE</text>
+</svg>

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import config
 from notion_client_wrapper import get_client
-from processing.character_mapper import character_for_tags
+from processing.character_mapper import characters_for_tags
 from processing import scheduler
 from storage import app_db
 
@@ -120,7 +120,7 @@ def migrate() -> dict[str, int]:
                 new_fans_count=_value(properties, config.AW_PROP_NEW_FANS_COUNT, "number", 0) or 0,
                 image_urls=_image_urls(properties),
                 tags=_value(properties, config.AW_PROP_TAGS, "multi_select", []),
-                character=character_for_tags(
+                characters=characters_for_tags(
                     _value(properties, config.AW_PROP_TAGS, "multi_select", []),
                     config.CHARACTER_MAP_PATH,
                 ),

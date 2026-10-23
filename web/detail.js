@@ -45,7 +45,7 @@ async function load() {
 function setupCharacterEditor(artwork) {
   const editor = document.createElement('section');
   editor.className = 'character-editor';
-  editor.innerHTML = '<div class="character-editor-heading"><span class="kicker">CHARACTER</span><strong class="character-value-display"></strong><input class="character-value" type="text" maxlength="100" aria-label="キャラクター名" hidden></div><div class="character-editor-actions"><button type="button" class="character-edit-button">編集</button></div><div class="character-edit-form" hidden><button type="button" class="character-auto-button">タグから自動入力</button><button type="button" class="character-save-button">保存</button><button type="button" class="character-cancel-button">キャンセル</button></div><p class="character-editor-status" role="status"></p>';
+  editor.innerHTML = '<div class="character-editor-heading"><span class="kicker">CHARACTERS</span><strong class="character-value-display"></strong><input class="character-value" type="text" maxlength="3030" aria-label="キャラクター名（複数は「、」区切り）" hidden></div><div class="character-editor-actions"><button type="button" class="character-edit-button">編集</button></div><div class="character-edit-form" hidden><button type="button" class="character-auto-button">タグから候補を入力</button><button type="button" class="character-save-button">保存</button><button type="button" class="character-cancel-button">キャンセル</button></div><p class="character-editor-status" role="status"></p>';
   document.querySelector('#detail .detail-header').insertAdjacentElement('afterend', editor);
 
   const display = editor.querySelector('.character-value-display');
@@ -53,14 +53,15 @@ function setupCharacterEditor(artwork) {
   const form = editor.querySelector('.character-edit-form');
   const editButton = editor.querySelector('.character-edit-button');
   const status = editor.querySelector('.character-editor-status');
-  const setValue = character => {
-    display.textContent = character || '';
-    value.value = character || '';
+  const setValue = characters => {
+    display.textContent = (characters || []).join('、');
+    value.value = (characters || []).join('、');
   };
   const setStatus = message => { status.textContent = message; };
   const applyArtwork = updated => {
     artwork.character = updated.character;
-    setValue(artwork.character);
+    artwork.characters = updated.characters;
+    setValue(artwork.characters);
   };
   const request = async (url, options) => {
     const response = await fetch(url, options);
@@ -68,7 +69,7 @@ function setupCharacterEditor(artwork) {
     return response.json();
   };
 
-  setValue(artwork.character);
+  setValue(artwork.characters || (artwork.character ? [artwork.character] : []));
   const enterEditMode = () => {
     display.hidden = true;
     value.hidden = false;
@@ -82,7 +83,7 @@ function setupCharacterEditor(artwork) {
     value.hidden = true;
     form.hidden = true;
     editButton.hidden = false;
-    setValue(artwork.character);
+    setValue(artwork.characters);
   };
   editButton.onclick = enterEditMode;
   editor.querySelector('.character-cancel-button').onclick = () => {
@@ -94,7 +95,7 @@ function setupCharacterEditor(artwork) {
       const updated = await request(`/api/artworks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ character: value.value.trim() || null }),
+        body: JSON.stringify({ characters: value.value.split('、').map(name => name.trim()).filter(Boolean) }),
       });
       applyArtwork(updated);
       leaveEditMode();
@@ -106,8 +107,8 @@ function setupCharacterEditor(artwork) {
   editor.querySelector('.character-auto-button').onclick = async () => {
     try {
       const suggestion = await request(`/api/artworks/${id}/character/suggestion`);
-      if (suggestion.character) {
-        value.value = suggestion.character;
+      if (suggestion.characters?.length) {
+        value.value = suggestion.characters.join('、');
         setStatus('タグから入力しました。保存すると反映されます');
       } else {
         setStatus('対応するタグがありません');

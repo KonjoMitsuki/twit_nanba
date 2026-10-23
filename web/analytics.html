@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>分析 | X Art Analytics</title>
+    <link rel="stylesheet" href="/css/analytics.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#workspace">分析エリアへ</a>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="ワークスペース">
+        <a class="workspace-brand" href="/"
+          ><span class="brand-mark">A</span
+          ><span>Art workspace<small>X Art Analytics</small></span></a
+        >
+        <nav class="primary-nav" aria-label="ページ">
+          <a href="/"><span data-icon="calendar"></span>カレンダー</a
+          ><a href="/analytics" aria-current="page"
+            ><span data-icon="chart"></span>データ分析<span class="prototype"
+              >BETA</span
+            ></a
+          >
+        </nav>
+        <div class="sidebar-heading">
+          MY VIEWS
+          <button
+            id="sidebar-add"
+            class="icon-button"
+            aria-label="ビューを追加"
+          >
+            <span data-icon="plus"></span>
+          </button>
+        </div>
+        <nav id="view-list" class="view-list" aria-label="保存したビュー"></nav>
+        <div class="sidebar-bottom">
+          <span class="private-label"
+            ><span data-icon="copy"></span>ビュー設定は利用者別</span
+          >
+          <div id="account"></div>
+        </div>
+      </aside>
+      <div class="main-shell">
+        <header class="workspace-topbar">
+          <span class="breadcrumb"
+            >ワークスペース <span>/</span> データ分析</span
+          >
+          <div class="header-actions">
+            <span id="save-status" role="status" aria-live="polite"></span
+            ><button
+              id="save-view"
+              class="primary-button"
+              type="button"
+              aria-label="ビュー設定を保存"
+              aria-keyshortcuts="Control+S Meta+S"
+              title="保存 (Ctrl/⌘+S)"
+              disabled
+            >
+              <span data-icon="check"></span>保存
+            </button>
+            <button id="refresh" class="quiet-button">
+              <span data-icon="refresh"></span>更新
+            </button>
+          </div>
+        </header>
+        <div id="demo-banner" class="demo-banner" hidden>
+          <span
+            >サンプルデータで操作中 · 設定は「保存」でこのブラウザーに保存されます</span
+          ><a href="/analytics">実データへ</a>
+        </div>
+        <main id="workspace" tabindex="-1">
+          <section class="page-heading">
+            <div>
+              <div class="page-symbol" data-icon="chart"></div>
+              <p class="eyebrow">EXPLORE YOUR ART</p>
+              <h1>データ分析</h1>
+              <p class="page-description">
+                気になる視点を、あなただけのビューに。
+              </p>
+            </div>
+            <button id="new-view" class="primary-button">
+              <span data-icon="plus"></span>ビューを作成
+            </button>
+          </section>
+
+          <section id="analysis-content" hidden>
+            <div class="view-toolbar">
+              <div class="view-title-wrap">
+                <span id="view-icon" data-icon="dashboard"></span
+                ><input
+                  id="view-name"
+                  aria-label="ビュー名"
+                  maxlength="100"
+                /><span id="layout-label" class="soft-badge"></span
+                ><span id="view-lock-state" class="soft-badge lock-badge" hidden
+                  ><span data-icon="lock"></span>ロック中</span
+                >
+              </div>
+              <div class="view-actions">
+                <label class="compact-select"
+                  ><span class="sr-only">表示レイアウト</span
+                  ><select id="layout">
+                    <option value="single">単独表示</option>
+                    <option value="dashboard">ダッシュボード</option>
+                  </select></label
+                ><button
+                  id="toggle-lock"
+                  class="icon-button"
+                  type="button"
+                  aria-label="ビューをロック"
+                  aria-pressed="false"
+                  title="ビューをロック"
+                >
+                  <span data-icon="lock"></span></button
+                ><button
+                  id="duplicate-view"
+                  class="icon-button"
+                  aria-label="ビューを複製"
+                >
+                  <span data-icon="copy"></span></button
+                ><button
+                  id="delete-view"
+                  class="icon-button danger"
+                  aria-label="ビューを削除"
+                >
+                  <span data-icon="trash"></span>
+                </button>
+              </div>
+            </div>
+            <div
+              id="single-tabs"
+              class="single-tabs"
+              role="tablist"
+              aria-label="表示するパネル"
+              hidden
+            ></div>
+            <div id="insights" class="insight-strip"></div>
+            <div id="panels" class="panels"></div>
+            <button id="add-panel" class="add-panel">
+              <span data-icon="plus"></span>表・グラフを追加
+            </button>
+            <p class="workspace-note">
+              <span data-icon="info"></span
+              >指定した計測がない作品は集計から除外します。日付は日本時間です。
+            </p>
+          </section>
+          <section id="empty-views" class="empty-views" hidden>
+            <h2>最初のビューを作りましょう</h2>
+            <p>テンプレートから始めて、軸や集計方法を自由に変えられます。</p>
+            <div id="starter-templates" class="template-grid"></div>
+          </section>
+          <p id="page-error" class="error-message" role="alert" hidden></p>
+        </main>
+      </div>
+    </div>
+    <dialog
+      id="settings"
+      class="settings-dialog"
+      aria-labelledby="settings-title"
+    >
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">PANEL SETTINGS · パネル設定</p>
+          <p id="settings-context" class="settings-context"></p>
+          <div class="settings-title-row">
+            <span id="settings-type-badge" class="settings-badge"></span>
+            <h2 id="settings-title">パネルの設定</h2>
+          </div>
+        </div>
+        <button
+          id="close-settings"
+          class="icon-button"
+          aria-label="設定を閉じる"
+        >
+          <span data-icon="close"></span>
+        </button>
+      </div>
+      <div
+        id="settings-summary"
+        class="settings-summary"
+        aria-live="polite"
+      ></div>
+      <p id="settings-error" class="error-message" role="alert" hidden></p>
+      <nav class="settings-tabs" aria-label="設定カテゴリー">
+        <button data-tab="data" aria-pressed="true"><span data-icon="data"></span><span>基本</span></button
+        ><button data-tab="axes"><span data-icon="chart"></span><span>表示</span></button
+        ><button data-tab="filters"><span data-icon="filter"></span><span>絞り込み</span></button
+        ><button data-tab="style"><span data-icon="style"></span><span>見た目</span></button
+        ><button data-tab="advanced"><span data-icon="formula"></span><span>詳細</span></button>
+      </nav>
+      <div id="settings-body"></div>
+      <footer class="settings-footer">
+        <div class="settings-footer-left">
+          <span data-icon="check"></span>
+          <span id="settings-save-state">変更は「保存」で確定します</span>
+        </div>
+        <div class="settings-footer-actions">
+          <button id="undo-settings" class="quiet-button" type="button" disabled>
+            元に戻す
+          </button>
+          <button id="done-settings" class="quiet-button" type="button">
+            閉じる
+          </button>
+          <button
+            id="save-settings"
+            class="primary-button-sm"
+            type="button"
+            aria-label="ビュー設定を保存"
+            disabled
+          >
+            保存
+          </button>
+        </div>
+      </footer>
+    </dialog>
+    <dialog
+      id="create-dialog"
+      class="create-dialog"
+      aria-labelledby="create-title"
+    >
+      <div class="dialog-head">
+        <h2 id="create-title">ビューを作成</h2>
+        <button
+          class="icon-button"
+          data-close="create-dialog"
+          aria-label="閉じる"
+        >
+          <span data-icon="close"></span>
+        </button>
+      </div>
+      <div id="create-templates" class="template-grid"></div>
+    </dialog>
+    <dialog
+      id="panel-type-dialog"
+      class="create-dialog panel-type-dialog"
+      aria-labelledby="panel-type-title"
+    >
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">ADD PANEL · パネル追加</p>
+          <h2 id="panel-type-title">表・グラフを追加</h2>
+        </div>
+        <button
+          class="icon-button"
+          data-close="panel-type-dialog"
+          aria-label="閉じる"
+        >
+          <span data-icon="close"></span>
+        </button>
+      </div>
+      <p class="panel-type-lead">
+        作りたいものから選んでください。あとから設定で自由に変更できます。
+      </p>
+      <div id="panel-types" class="template-grid panel-type-grid"></div>
+    </dialog>
+    <dialog
+      id="character-dialog"
+      class="character-dialog"
+      aria-labelledby="character-title"
+    >
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">SHARED PROPERTY</p>
+          <h2 id="character-title">キャラクターを編集</h2>
+        </div>
+        <button
+          class="icon-button"
+          data-close="character-dialog"
+          aria-label="閉じる"
+        >
+          <span data-icon="close"></span>
+        </button>
+      </div>
+      <p>
+        候補から選ぶか、名前を入力して追加できます。変更は2人共通のデータに反映されます。
+      </p>
+      <div
+        id="character-options"
+        class="character-options"
+        aria-live="polite"
+      ></div>
+      <form id="add-character-form" autocomplete="off">
+        <label for="character-name">キャラクターを検索・追加</label>
+        <div class="character-combobox">
+          <div class="inline-form">
+            <input
+              id="character-name"
+              maxlength="100"
+              placeholder="名前を入力すると候補を表示"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded="false"
+              aria-controls="character-suggestions"
+              autocomplete="off"
+            /><button class="quiet-button" type="submit">追加</button>
+          </div>
+          <ul
+            id="character-suggestions"
+            class="character-suggestions"
+            role="listbox"
+            aria-label="キャラクター候補"
+            hidden
+          ></ul>
+        </div>
+      </form>
+      <div class="dialog-actions">
+        <button id="suggest-characters" class="quiet-button">
+          タグから候補を入力</button
+        ><button id="save-characters" class="primary-button">変更を保存</button>
+      </div>
+      <p id="character-status" role="status"></p>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <dialog
+      id="conflict-dialog"
+      class="character-dialog"
+      aria-labelledby="conflict-title"
+    >
+      <div class="dialog-head">
+        <h2 id="conflict-title">別のタブで更新されています</h2>
+      </div>
+      <p>
+        この画面での変更を保持しています。別のビューとして保存するか、保存済みの設定を使ってください。
+      </p>
+      <div class="dialog-actions">
+        <button id="use-server-view" class="quiet-button">
+          保存済み設定を使う（変更を破棄）</button
+        ><button id="recover-view" class="primary-button">
+          変更を別ビューとして保存
+        </button>
+      </div>
+      <p id="conflict-error" role="alert"></p>
+    </dialog>
+    <script src="/analytics-chart-interactions.js"></script>
+    <script src="/analytics-charts.js"></script>
+    <script src="/analytics-characters.js"></script>
+    <script src="/analytics-table.js"></script>
+    <script src="/analytics.js"></script>
+  </body>
+</html>

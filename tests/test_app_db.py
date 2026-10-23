@@ -1,3 +1,4 @@
+from processing.character_mapper import match_characters
 from storage import app_db
 
 
@@ -187,6 +188,59 @@ def test_artwork_character_crud_and_migration(tmp_path):
     assert artwork["character"] == "鏡音リン"
 
 
+def test_auto_fill_missing_characters_scans_all_and_protects_manual(tmp_path):
+    db_path = str(tmp_path / "app.db")
+    mapping = {"miku": "初音ミク", "luka": "巡音ルカ"}
+
+    def create(tweet_id, *, tags, **kwargs):
+        return app_db.create_artwork(
+            tweet_id=tweet_id,
+            url=f"https://x.com/example/status/{tweet_id}",
+            title=f"Artwork {tweet_id}",
+            posted_at="2026-09-01T12:00:00+00:00",
+            tags=tags,
+            db_path=db_path,
+            **kwargs,
+        )
+
+    matched = create("1", tags=["#MIKU", "Luka"])
+    unmatched = create("2", tags=["unknown"])
+    manual_empty = create("3", tags=["miku"], characters=[], character_manual=True)
+    manual_named = create("4", tags=["luka"], character="手動", character_manual=True)
+    existing = create("5", tags=["miku"], character="既存")
+
+    def resolve(tags):
+        return match_characters(tags, mapping)
+
+    dry_run = app_db.auto_fill_missing_characters(resolve, db_path, dry_run=True)
+    assert dry_run["dry_run"] is True
+    assert dry_run["scanned"] == 5
+    assert dry_run["skipped_manual"] == 2
+    assert dry_run["skipped_existing"] == 1
+    assert dry_run["unmatched"] == 1
+    assert dry_run["filled"] == 0
+    assert dry_run["would_fill"] == 1
+    assert dry_run["changes"] == [
+        {"id": matched, "title": "Artwork 1", "characters": ["初音ミク", "巡音ルカ"]},
+    ]
+    assert app_db.get_artwork(matched, db_path)["characters"] == []
+
+    result = app_db.auto_fill_missing_characters(resolve, db_path)
+    assert result["dry_run"] is False
+    assert result["filled"] == 1
+    assert result["would_fill"] == 0
+    assert app_db.get_artwork(matched, db_path)["characters"] == ["初音ミク", "巡音ルカ"]
+    assert app_db.get_artwork(unmatched, db_path)["characters"] == []
+    assert app_db.get_artwork(manual_empty, db_path)["characters"] == []
+    assert app_db.get_artwork(manual_named, db_path)["characters"] == ["手動"]
+    assert app_db.get_artwork(existing, db_path)["characters"] == ["既存"]
+
+    again = app_db.auto_fill_missing_characters(resolve, db_path)
+    assert again["filled"] == 0
+    assert again["unmatched"] == 1
+    assert again["changes"] == []
+
+
 def test_init_db_migrates_table_without_character_column(tmp_path):
     import sqlite3
     db_path = str(tmp_path / "legacy.db")
@@ -214,3 +268,24 @@ def test_init_db_migrates_table_without_character_column(tmp_path):
     with sqlite3.connect(db_path) as conn:
         columns = [row[1] for row in conn.execute("PRAGMA table_info(artworks)").fetchall()]
     assert "character" in columns
+
+
+def test_character_usage_counts_count_artworks(tmp_path):
+    db_path = str(tmp_path / "app.db")
+    for index, characters in enumerate(
+        [["初音ミク", "巡音ルカ"], ["初音ミク"], ["鏡音リン"]]
+    ):
+        app_db.create_artwork(
+            tweet_id=str(index),
+            url=f"https://example.com/{index}",
+            title=str(index),
+            posted_at="2026-10-01T00:00:00+00:00",
+            characters=characters,
+            db_path=db_path,
+        )
+
+    assert app_db.character_usage_counts(db_path) == {
+        "初音ミク": 2,
+        "巡音ルカ": 1,
+        "鏡音リン": 1,
+    }

@@ -40,3 +40,7 @@ cron.logj.process.lock
 
 #data
 data/character_map.csv
+
+# Local prototype assets and test scratch data
+work/
+.pytest_cache/
