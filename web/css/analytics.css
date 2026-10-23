@@ -1526,3 +1526,52 @@ dialog::backdrop {
   font-size: 10px;
   line-height: 1.6;
 }
+
+.table-group {
+  border-top: 1px solid var(--line);
+}
+.table-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 10px 14px;
+  cursor: pointer;
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.table-group > summary::before {
+  content: "›";
+  font-size: 20px;
+  line-height: 1;
+}
+.table-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+.table-group-count {
+  margin-left: auto;
+  font: 11px var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.table-sort-rule {
+  padding: 12px;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.table-sort-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 9px;
+}
+.table-sort-heading > div {
+  display: flex;
+}
+.table-sort-rule .settings-field {
+  margin-bottom: 5px;
+}

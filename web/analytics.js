@@ -129,6 +129,12 @@
       ],
       table_sort: "date",
       table_desc: true,
+      table_sorts: null,
+      table_group: "",
+      table_group_order: "asc",
+      table_group_dates: "day",
+      table_group_multivalue: "individual",
+      table_collapsed_groups: [],
       style: {
         color: "#447869",
         legend: true,
@@ -645,26 +651,26 @@
       .join("");
   }
   function renderTable(host, panel, data, page = 0) {
-    let rows = [...data.rows];
-    const sort = panel.table_sort || "date",
-      direction = panel.table_desc ? -1 : 1;
-    rows.sort((a, b) => {
-      const av = a[sort],
-        bv = b[sort];
-      if (av == null) return 1;
-      if (bv == null) return -1;
-      return (
-        direction *
-        (typeof av === "number" && typeof bv === "number"
-          ? av - bv
-          : String(av).localeCompare(String(bv), "ja"))
-      );
-    });
-    const shown = rows.slice(page * 50, (page + 1) * 50),
-      columns =
-        panel.source !== "followers" && panel.show_images !== false
-          ? ["image", ...panel.columns]
-          : panel.columns;
+    const kinds = Object.fromEntries(
+      state.metadata.sources[panel.source].map((field) => [
+        field.key,
+        field.type,
+      ]),
+    );
+    const rows = AnalysisTable.sortRows(data.rows, panel, kinds);
+    const sorts = AnalysisTable.sortsFor(panel);
+    const groups = AnalysisTable.groupRows(rows, panel, kinds);
+    const grouped = !!panel.table_group;
+    const totalPages = Math.max(
+      1,
+      Math.ceil((grouped ? groups.length : rows.length) / (grouped ? 10 : 50)),
+    );
+    page = Math.max(0, Math.min(page, totalPages - 1));
+    const columns =
+      panel.source !== "followers" && panel.show_images !== false
+        ? ["image", ...panel.columns]
+        : panel.columns;
+    host.groupPages ??= new Map();
     const cell = (row, key) => {
       if (key === "image") {
         const images = row.image_urls || [];
@@ -693,7 +699,66 @@
       if (Array.isArray(row[key])) return esc(row[key].join(" / "));
       return esc(typeof row[key] === "number" ? fmt(row[key]) : row[key]);
     };
-    host.innerHTML = `<div class="table-scroll"><table><thead><tr>${columns.map((key) => (key === "image" ? '<th scope="col">投稿写真</th>' : `<th aria-sort="${sort === key ? (panel.table_desc ? "descending" : "ascending") : "none"}"><button data-sort="${esc(key)}">${esc(data.fields[key] || key)} ${sort === key ? (panel.table_desc ? "↓" : "↑") : ""}</button></th>`)).join("")}</tr></thead><tbody>${shown.map((row) => `<tr>${columns.map((key) => `<td>${cell(row, key)}</td>`).join("")}</tr>`).join("")}</tbody></table>${!shown.length ? '<p class="panel-empty">条件に一致する作品がありません</p>' : ""}</div><div class="table-pagination"><span>${rows.length ? `${page * 50 + 1}〜${Math.min((page + 1) * 50, rows.length)} / ` : ""}${fmt(rows.length)}行</span><div><button class="quiet-button" data-page="-1" ${page === 0 ? "disabled" : ""}>前へ</button><button class="quiet-button" data-page="1" ${(page + 1) * 50 >= rows.length ? "disabled" : ""}>次へ</button></div></div>`;
+    const table = (items, rowPage = 0) =>
+      `<div class="table-scroll"><table><thead><tr>${columns
+        .map((key) => {
+          if (key === "image") return '<th scope="col">投稿写真</th>';
+          const rank = sorts.findIndex((sort) => sort.field === key),
+            sort = sorts[rank];
+          return `<th aria-sort="${rank === 0 ? (sort.desc ? "descending" : "ascending") : "none"}"><button data-sort="${esc(key)}">${esc(data.fields[key] || key)} ${sort ? (sort.desc ? "↓" : "↑") + (sorts.length > 1 ? String(rank + 1) : "") : ""}</button></th>`;
+        })
+        .join("")}</tr></thead><tbody>${items
+        .slice(rowPage * 50, (rowPage + 1) * 50)
+        .map(
+          (row) =>
+            `<tr>${columns.map((key) => `<td>${cell(row, key)}</td>`).join("")}</tr>`,
+        )
+        .join(
+          "",
+        )}</tbody></table>${!items.length ? '<p class="panel-empty">条件に一致する作品がありません</p>' : ""}</div>`;
+    const collapsed = new Set(panel.table_collapsed_groups || []);
+    const shownGroups = groups.slice(page * 10, (page + 1) * 10);
+    host.innerHTML =
+      (grouped
+        ? shownGroups
+            .map((group) => {
+              const rowPage = Math.min(
+                host.groupPages.get(group.key) || 0,
+                Math.max(0, Math.ceil(group.rows.length / 50) - 1),
+              );
+              host.groupPages.set(group.key, rowPage);
+              return `<details class="table-group" data-group-key="${esc(group.key)}" ${collapsed.has(group.key) ? "" : "open"}><summary><span>${esc(group.label)}</span><span class="table-group-count">${fmt(group.rows.length)}行</span></summary>${table(group.rows, rowPage)}${group.rows.length > 50 ? `<div class="table-pagination"><span>${rowPage * 50 + 1}〜${Math.min((rowPage + 1) * 50, group.rows.length)} / ${fmt(group.rows.length)}行</span><div><button class="quiet-button" data-group-page="-1" ${rowPage === 0 ? "disabled" : ""}>前へ</button><button class="quiet-button" data-group-page="1" ${(rowPage + 1) * 50 >= group.rows.length ? "disabled" : ""}>次へ</button></div></div>` : ""}</details>`;
+            })
+            .join("") ||
+          '<p class="panel-empty">条件に一致する作品がありません</p>'
+        : table(rows, page)) +
+      `<div class="table-pagination"><span>${grouped ? `${fmt(groups.length)}グループ・元データ${fmt(rows.length)}行` : `${rows.length ? `${page * 50 + 1}〜${Math.min((page + 1) * 50, rows.length)} / ` : ""}${fmt(rows.length)}行`}</span><div><button class="quiet-button" data-page="-1" ${page === 0 ? "disabled" : ""}>前へ</button><span>${page + 1} / ${totalPages}</span><button class="quiet-button" data-page="1" ${page + 1 >= totalPages ? "disabled" : ""}>次へ</button></div></div>`;
+    host.querySelectorAll(".table-group").forEach((details) => {
+      details.ontoggle = () => {
+        const keys = new Set(panel.table_collapsed_groups || []),
+          key = details.dataset.groupKey;
+        if (keys.has(key) === !details.open) return;
+        if (!details.open && keys.size >= 2000) {
+          details.open = true;
+          toast("折りたたみ状態の保存は2,000グループまでです");
+          return;
+        }
+        details.open ? keys.delete(key) : keys.add(key);
+        panel.table_collapsed_groups = [...keys];
+        changed({ render: false });
+      };
+    });
+    host.querySelectorAll("[data-group-page]").forEach(
+      (button) =>
+        (button.onclick = () => {
+          const key = button.closest("[data-group-key]").dataset.groupKey;
+          host.groupPages.set(
+            key,
+            (host.groupPages.get(key) || 0) + Number(button.dataset.groupPage),
+          );
+          renderTable(host, panel, data, page);
+        }),
+    );
     host.querySelectorAll(".artwork-thumbnail img").forEach((image) => {
       const failed = () => {
         image.hidden = true;
@@ -705,11 +770,19 @@
     host.querySelectorAll("[data-sort]").forEach(
       (button) =>
         (button.onclick = () => {
-          panel.table_desc =
-            panel.table_sort === button.dataset.sort
-              ? !panel.table_desc
-              : false;
-          panel.table_sort = button.dataset.sort;
+          const field = button.dataset.sort;
+          const existing = sorts.find((sort) => sort.field === field);
+          const next = {
+            field,
+            desc: sorts[0]?.field === field ? !existing.desc : false,
+          };
+          panel.table_sorts = [
+            next,
+            ...sorts.filter((sort) => sort.field !== field),
+          ].slice(0, 5);
+          panel.table_sort = field;
+          panel.table_desc = next.desc;
+          host.groupPages.clear();
           changed({ render: false });
           renderTable(host, panel, data);
         }),
@@ -765,6 +838,8 @@
     if (!p) return;
     $("#settings-title").textContent = p.title;
     $("#settings-error").hidden = true;
+    document.querySelector('[data-tab="organize"]').hidden =
+      p.chart !== "table";
     document
       .querySelectorAll("[data-tab]")
       .forEach((button) =>
@@ -875,6 +950,68 @@
           }),
           "均等配分では件数と合計を配分し、平均・分位数には同じ重みを使います。",
         );
+    } else if (state.tab === "organize") {
+      const fields = fieldOptions(p, { rowOnly: true });
+      p.table_sorts = AnalysisTable.sortsFor(p).map((sort) => ({ ...sort }));
+      html = labelField(
+        "グループ化する項目",
+        select("table_group", p.table_group || "", {
+          "": "グループ化しない",
+          ...fields,
+        }),
+      );
+      if (p.table_group) {
+        html += labelField(
+          "グループの表示順",
+          select("table_group_order", p.table_group_order || "asc", {
+            asc: "昇順",
+            desc: "降順",
+          }),
+        );
+        const kind = state.metadata.sources[p.source].find(
+          (field) => field.key === p.table_group,
+        )?.type;
+        if (kind === "date")
+          html += labelField(
+            "日付のまとめ方",
+            select("table_group_dates", p.table_group_dates || "day", {
+              day: "日ごと（JST）",
+              week: "週ごと（月曜開始・JST）",
+              month: "月ごと（JST）",
+              year: "年ごと（JST）",
+              exact: "値が一致するもの",
+            }),
+          );
+        if (["character", "tags"].includes(p.table_group))
+          html += labelField(
+            "複数の値がある行",
+            select(
+              "table_group_multivalue",
+              p.table_group_multivalue || "individual",
+              {
+                individual: "それぞれのグループに表示",
+                combination: "組み合わせでまとめる",
+              },
+            ),
+            "複数グループへの表示では同じ行が複数回表示されます。元データと数値は変更しません。",
+          );
+        html +=
+          '<p class="settings-help">グループ見出しをタップして折りたためます。件数は全行から集計し、折りたたみ状態も保存します。</p>';
+      }
+      html += '<span class="field-label">並べ替え（上の条件から優先）</span>';
+      html += p.table_sorts
+        .map((sort, index) => {
+          const choices = Object.fromEntries(
+            Object.entries(fields).filter(
+              ([field]) =>
+                field === sort.field ||
+                !p.table_sorts.some((other) => other.field === field),
+            ),
+          );
+          return `<div class="table-sort-rule"><div class="table-sort-heading"><span>優先度 ${index + 1}</span><div><button class="icon-button" data-sort-move="${index},-1" aria-label="並べ替え条件${index + 1}を上へ" ${index === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-button" data-sort-move="${index},1" aria-label="並べ替え条件${index + 1}を下へ" ${index === p.table_sorts.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-button" data-sort-remove="${index}" aria-label="並べ替え条件${index + 1}を削除">${icon("close")}</button></div></div>${labelField(`並べ替え項目 ${index + 1}`, select(`table_sorts.${index}.field`, sort.field, choices))}<label class="toggle-label"><input type="checkbox" data-field="table_sorts.${index}.desc" ${sort.desc ? "checked" : ""}>降順（条件${index + 1}）</label></div>`;
+        })
+        .join("");
+      html += `<button class="quiet-button" id="add-table-sort" ${p.table_sorts.length >= Math.min(5, Object.keys(fields).length) ? "disabled" : ""}>${icon("plus")}並べ替え条件を追加</button><p class="settings-help">最大5条件。未設定・未計測は昇順・降順とも最後に表示します。条件をすべて削除すると元の並び順になります。</p>`;
     } else if (state.tab === "filters") {
       html = labelField(
         "グループ同士の条件",
@@ -916,6 +1053,9 @@
         '<button class="quiet-button" id="add-formula">' +
         icon("plus") +
         '計算指標を追加</button><p class="settings-help">関数：sum / mean / median / min / max / count / abs / round / sqrt / log / log10 / coalesce<br>条件式：likes / impressions * 100 if impressions &gt; 0 else 0</p><span class="field-label">よく使う計算式から追加</span><div class="formula-examples"><button data-example="rate">反応率：likes / impressions * 100</button><button data-example="aggregate">合計から反応率：sum(likes) / sum(impressions) * 100</button><button data-example="speed">時間あたり：likes / elapsed_hours</button></div>';
+    } else if (p.chart === "table") {
+      html =
+        '<p class="settings-help">テーブルの表示順は「グループ・並べ替え」、投稿写真の表示は「軸・集計」で設定できます。</p>';
     } else {
       html =
         labelField(
@@ -999,6 +1139,9 @@
                     "impressions",
                   ];
             p.table_sort = "date";
+            p.table_sorts = null;
+            p.table_group = "";
+            p.table_collapsed_groups = [];
             structural = true;
           }
           if (el.dataset.field === "chart") {
@@ -1012,6 +1155,23 @@
             structural = true;
           }
           if (el.dataset.field === "transform") structural = true;
+          if (
+            [
+              "table_group",
+              "table_group_dates",
+              "table_group_multivalue",
+            ].includes(el.dataset.field)
+          ) {
+            p.table_collapsed_groups = [];
+            structural = true;
+          }
+          if (el.dataset.field.startsWith("table_sorts.")) {
+            if (p.table_sorts[0]) {
+              p.table_sort = p.table_sorts[0].field;
+              p.table_desc = p.table_sorts[0].desc;
+            }
+            structural = el.tagName === "SELECT";
+          }
           if (el.dataset.field === "title") {
             const i = state.view.config.panels.indexOf(p);
             if (i >= 0) $("#settings-title").textContent = p.title;
@@ -1054,6 +1214,40 @@
       });
       settingsChanged(true);
     });
+    $("#add-table-sort")?.addEventListener("click", () => {
+      const fields = fieldOptions(p, { rowOnly: true }),
+        used = new Set(p.table_sorts.map((sort) => sort.field));
+      const field = Object.keys(fields).find((field) => !used.has(field));
+      if (!field || p.table_sorts.length >= 5) return;
+      p.table_sorts.push({ field, desc: false });
+      settingsChanged(true);
+    });
+    $("#settings-body")
+      .querySelectorAll("[data-sort-remove]")
+      .forEach(
+        (button) =>
+          (button.onclick = () => {
+            p.table_sorts.splice(Number(button.dataset.sortRemove), 1);
+            settingsChanged(true);
+          }),
+      );
+    $("#settings-body")
+      .querySelectorAll("[data-sort-move]")
+      .forEach(
+        (button) =>
+          (button.onclick = () => {
+            const [index, delta] = button.dataset.sortMove
+                .split(",")
+                .map(Number),
+              next = index + delta;
+            if (next < 0 || next >= p.table_sorts.length) return;
+            [p.table_sorts[index], p.table_sorts[next]] = [
+              p.table_sorts[next],
+              p.table_sorts[index],
+            ];
+            settingsChanged(true);
+          }),
+      );
     $("#settings-body")
       .querySelectorAll("[data-add-rule]")
       .forEach(
@@ -1132,6 +1326,15 @@
             if (!p.y.length)
               p.y = [p.source === "followers" ? "followers" : "likes"];
             p.columns = p.columns.filter((v) => v !== key);
+            if (p.table_group === key) {
+              p.table_group = "";
+              p.table_collapsed_groups = [];
+            }
+            if (p.table_sorts)
+              p.table_sorts = p.table_sorts.filter(
+                (sort) => sort.field !== key,
+              );
+            if (p.table_sort === key) p.table_sort = "date";
             settingsChanged(true);
           }),
       );

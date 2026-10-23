@@ -40,12 +40,25 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
         ("broken", [f"http://127.0.0.1:{port}/missing-photo.svg"]),
         ("empty", []),
     ]:
-        app_db.create_artwork(
+        artwork_id = app_db.create_artwork(
             tweet_id=suffix,
             url=f"https://example.com/{suffix}",
             title=suffix,
             posted_at="2026-10-10T00:00:00+00:00",
             image_urls=image_urls,
+            db_path=env["APP_DB_PATH"],
+            characters=["A", "B"]
+            if suffix == "photo"
+            else ["A"]
+            if suffix == "broken"
+            else [],
+        )
+        app_db.add_metric_snapshot(
+            artwork_id,
+            stage="24h",
+            elapsed_seconds=86400,
+            measured_at="2026-10-11T00:00:00+00:00",
+            likes={"photo": 10, "broken": 20, "empty": 30}[suffix],
             db_path=env["APP_DB_PATH"],
         )
     process = subprocess.Popen(
@@ -205,6 +218,117 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
                 "document.querySelector('#view-name').value === '利用者Aの分析'"
             )
             assert another.locator("#profile-user").input_value() == "profile_a"
+            another.get_by_role("button", name="作品テーブルの設定", exact=True).click()
+            another.get_by_role("button", name="グループ・並べ替え", exact=True).click()
+            another.get_by_label("グループ化する項目", exact=True).select_option(
+                "character"
+            )
+            another.get_by_label("並べ替え項目 1", exact=True).select_option("likes")
+            another.get_by_role("button", name="並べ替え条件を追加", exact=True).click()
+            another.get_by_label("並べ替え項目 2", exact=True).select_option("date")
+            another.wait_for_function(
+                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
+            )
+            another.keyboard.press("Escape")
+            another.wait_for_function(
+                "document.querySelectorAll('.table-group').length === 3"
+            )
+            first = another.locator(".table-group").first
+            assert first.locator("summary span").first.inner_text() == "A"
+            assert first.locator(".table-group-count").inner_text() == "2行"
+            assert (
+                first.locator("tbody tr").first.locator("td").first.inner_text()
+                == "broken"
+            )
+            with another.expect_response(
+                lambda response: "/api/analytics/views/" in response.url
+                and response.request.method == "PATCH"
+                and response.status == 200
+            ):
+                first.locator("summary").click()
+            another.wait_for_function(
+                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
+            )
+            another.reload()
+            another.wait_for_selector(".table-group")
+            assert another.locator(".table-group").first.evaluate("el => !el.open")
+            another.get_by_role("button", name="作品テーブルの設定", exact=True).click()
+            another.get_by_role("button", name="グループ・並べ替え", exact=True).click()
+            assert (
+                another.get_by_label("並べ替え項目 1", exact=True).input_value()
+                == "likes"
+            )
+            assert (
+                another.get_by_label("並べ替え項目 2", exact=True).input_value()
+                == "date"
+            )
+            another.get_by_label("複数の値がある行", exact=True).select_option(
+                "combination"
+            )
+            another.wait_for_function(
+                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
+            )
+            another.keyboard.press("Escape")
+            another.wait_for_function(
+                "Array.from(document.querySelectorAll('.table-group > summary')).some(el => el.textContent.includes('A + B'))"
+            )
+            another.set_viewport_size({"width": 375, "height": 812})
+            assert another.evaluate(
+                "document.documentElement.scrollWidth <= innerWidth"
+            )
+            # Return many rows through the real query interface to verify pagination.
+            grouped_rows = [
+                {
+                    "row_id": str(i),
+                    "artwork_id": str(i),
+                    "title": f"Row {i}",
+                    "characters": ["A"],
+                    "character": "A",
+                    "likes": i,
+                    "date": "2026-10-10",
+                    "image_urls": [],
+                }
+                for i in range(123)
+            ]
+
+            def paged_result(route):
+                route.fulfill(
+                    json={
+                        "rows": grouped_rows,
+                        "points": [],
+                        "fields": {
+                            "title": "作品名",
+                            "character": "キャラクター",
+                            "date": "日付",
+                            "likes": "いいね",
+                        },
+                        "artwork_count": len(grouped_rows),
+                        "missing_stage_count": 0,
+                        "excluded_count": 0,
+                        "warnings": [],
+                    }
+                )
+
+            another.route("**/api/analytics/query", paged_result)
+            another.get_by_role("button", name="更新", exact=True).click()
+            another.wait_for_function(
+                "document.querySelector('.table-group-count')?.textContent === '123行'"
+            )
+            assert another.locator(".table-group tbody tr").count() == 50
+            another.locator('.table-group [data-group-page="1"]').click()
+            assert another.locator(".table-group tbody tr").count() == 50
+            another.locator('.table-group [data-group-page="1"]').click()
+            assert another.locator(".table-group tbody tr").count() == 23
+            grouped_rows[:] = [
+                row | {"characters": [f"A{i}"], "character": f"A{i}"}
+                for i, row in enumerate(grouped_rows[:12])
+            ]
+            another.get_by_role("button", name="更新", exact=True).click()
+            another.wait_for_function(
+                "document.querySelectorAll('.table-group').length === 10"
+            )
+            another.locator('[data-page="1"]').click()
+            assert another.locator(".table-group").count() == 2
             assert not errors
             browser.close()
     finally:

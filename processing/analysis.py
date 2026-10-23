@@ -244,6 +244,19 @@ def validate_panel(panel: Panel):
         raise ValueError("テーブルに表示する列を確認してください")
     if panel.chart == "table" and not panel.columns:
         raise ValueError("テーブルには1つ以上の表示列を選択してください")
+    if panel.chart == "table":
+        table_fields = all_names - group_names
+        if panel.table_group and panel.table_group not in table_fields:
+            raise ValueError("このデータで使用できるグループ化項目を選択してください")
+        sort_fields = (
+            [sort.field for sort in panel.table_sorts]
+            if panel.table_sorts is not None
+            else [panel.table_sort]
+        )
+        if any(field not in table_fields for field in sort_fields):
+            raise ValueError("このデータで使用できる並べ替え項目を選択してください")
+        if len(set(sort_fields)) != len(sort_fields):
+            raise ValueError("並べ替え項目が重複しています")
     if panel.chart == "pie" and len(panel.y) != 1:
         raise ValueError("円グラフの数値は1つ選択してください")
     if panel.transform != "none" and panel.chart != "line":

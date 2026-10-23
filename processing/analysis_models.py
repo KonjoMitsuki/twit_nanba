@@ -56,6 +56,11 @@ class Appearance(StrictModel):
         return self
 
 
+class TableSort(StrictModel):
+    field: str = Field(max_length=60)
+    desc: bool = False
+
+
 class Panel(StrictModel):
     id: str = Field(default="panel_1", max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")
     title: str = Field(default="キャラクター別の成績", max_length=120)
@@ -91,6 +96,14 @@ class Panel(StrictModel):
     )
     table_sort: str = Field(default="date", max_length=60)
     table_desc: bool = True
+    table_sorts: list[TableSort] | None = Field(default=None, max_length=5)
+    table_group: str = Field(default="", max_length=60)
+    table_group_order: Literal["asc", "desc"] = "asc"
+    table_group_dates: Literal["day", "week", "month", "year", "exact"] = "day"
+    table_group_multivalue: Literal["individual", "combination"] = "individual"
+    table_collapsed_groups: list[Annotated[str, Field(max_length=5000)]] = Field(
+        default_factory=list, max_length=2000
+    )
     style: Appearance = Field(default_factory=Appearance)
 
 

@@ -154,3 +154,67 @@ def test_cross_site_writes_are_rejected_without_a_login_flow(client):
         ).status_code
         == 201
     )
+
+
+def test_table_grouping_and_multiple_sorts_round_trip(client):
+    headers = profile_headers(client)
+    panel = {
+        "chart": "table",
+        "table_group": "character",
+        "table_group_multivalue": "individual",
+        "table_group_order": "desc",
+        "table_sorts": [
+            {"field": "likes", "desc": True},
+            {"field": "date", "desc": False},
+        ],
+        "table_collapsed_groups": ['["character","day","A"]'],
+    }
+    response = client.post(
+        "/api/analytics/views",
+        headers=headers,
+        json={"name": "Grouped", "config": {"panels": [panel]}},
+    )
+    assert response.status_code == 201
+    saved = client.get("/api/analytics/views", headers=headers).json()["views"][0][
+        "config"
+    ]["panels"][0]
+    for field, value in panel.items():
+        assert saved[field] == value
+    assert (
+        client.post("/api/analytics/query", headers=headers, json=panel).status_code
+        == 200
+    )
+
+
+def test_table_grouping_rejects_unknown_fields_and_preserves_legacy_sort(client):
+    headers = profile_headers(client)
+    for fields in [
+        {"table_group": "unknown"},
+        {"table_sorts": [{"field": "unknown"}]},
+        {"table_sorts": [{"field": "likes"}, {"field": "likes"}]},
+        {
+            "source": "followers",
+            "x": "date",
+            "y": ["followers"],
+            "columns": ["date"],
+            "table_group": "character",
+        },
+        {"table_sorts": [{"field": "likes"}] * 6},
+    ]:
+        assert (
+            client.post(
+                "/api/analytics/query",
+                headers=headers,
+                json={"chart": "table", **fields},
+            ).status_code
+            == 422
+        )
+    for fields in [{"table_sort": "likes", "table_desc": True}, {"table_sorts": []}]:
+        assert (
+            client.post(
+                "/api/analytics/query",
+                headers=headers,
+                json={"chart": "table", **fields},
+            ).status_code
+            == 200
+        )
