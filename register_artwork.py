@@ -29,7 +29,7 @@ import httpx
 
 import config
 from notion_client_wrapper import artworks
-from processing.character_mapper import character_for_tags
+from processing.character_mapper import character_for_tags, characters_for_tags
 from scraper.auto_detect import _extract_tweet_info, calculate_initial_stage
 from scraper.browser import create_browser_context
 from storage import app_db
@@ -238,6 +238,8 @@ def main() -> None:
             posted_at=posted_at.isoformat(),
             status=initial_stage,
             character=character,
+            characters=[character] if args.character else characters_for_tags(tags, config.CHARACTER_MAP_PATH),
+            character_manual=bool(args.character),
             image_urls=image_urls,
             tags=tags,
         )

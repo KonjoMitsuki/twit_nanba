@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 import sqlite3
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -63,6 +64,24 @@ CREATE TABLE IF NOT EXISTS account_metrics (
     followers INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_account_metrics_time ON account_metrics(measured_at);
+CREATE TABLE IF NOT EXISTS characters (
+    name TEXT PRIMARY KEY
+);
+CREATE TABLE IF NOT EXISTS artwork_characters (
+    artwork_id TEXT NOT NULL REFERENCES artworks(id) ON DELETE CASCADE,
+    character TEXT NOT NULL REFERENCES characters(name),
+    PRIMARY KEY (artwork_id, character)
+);
+CREATE TABLE IF NOT EXISTS analytics_views (
+    id TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    name TEXT NOT NULL,
+    config TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_views_owner ON analytics_views(owner, updated_at);
+
 """
 
 
@@ -74,17 +93,24 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
     connection = sqlite3.connect(db_path or DB_PATH)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 5000")
     return connection
 
 
 def init_db(db_path: str | None = None) -> None:
     with _connect(db_path) as connection:
         connection.executescript(SCHEMA)
+        connection.execute("BEGIN IMMEDIATE")
         columns = {
             row[1] for row in connection.execute("PRAGMA table_info(artworks)")
         }
         if "character" not in columns:
             connection.execute("ALTER TABLE artworks ADD COLUMN character TEXT")
+        if "character_manual" not in columns:
+            connection.execute("ALTER TABLE artworks ADD COLUMN character_manual INTEGER NOT NULL DEFAULT 0")
+            connection.execute("UPDATE artworks SET character_manual = 1 WHERE character IS NOT NULL AND TRIM(character) != ''")
+            connection.execute("INSERT OR IGNORE INTO characters SELECT DISTINCT TRIM(character) FROM artworks WHERE character IS NOT NULL AND TRIM(character) != ''")
+            connection.execute("INSERT OR IGNORE INTO artwork_characters SELECT id, TRIM(character) FROM artworks WHERE character IS NOT NULL AND TRIM(character) != ''")
 
 
 def _json_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -124,6 +150,8 @@ def create_artwork(
     posted_at: str,
     status: str = "TRACKING",
     character: str | None = None,
+    characters: list[str] | None = None,
+    character_manual: bool = False,
     image_urls: list[str] | None = None,
     tags: list[str] | None = None,
     db_path: str | None = None,
@@ -136,6 +164,7 @@ def create_artwork(
             "INSERT INTO artworks (id, tweet_id, url, title, posted_at, status, character, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (artwork_id, tweet_id, url, title, posted_at, status, character, now, now),
         )
+        _write_characters(connection, artwork_id, characters if characters is not None else ([character] if character else []), manual=character_manual)
         for order, image_url in enumerate(image_urls or [], 1):
             connection.execute(
                 "INSERT INTO artwork_images (id, artwork_id, image_order, source_url) VALUES (?, ?, ?, ?)",
@@ -154,6 +183,8 @@ def upsert_artwork(
     posted_at: str,
     status: str = "TRACKING",
     character: str | None = None,
+    characters: list[str] | None = None,
+    character_manual: bool = False,
     next_schedule: str | None = None,
     new_fans_count: int = 0,
     image_urls: list[str] | None = None,
@@ -177,13 +208,17 @@ def upsert_artwork(
             ON CONFLICT(id) DO UPDATE SET
               tweet_id=excluded.tweet_id, url=excluded.url, title=excluded.title,
               posted_at=excluded.posted_at, status=excluded.status,
-              character=COALESCE(excluded.character, artworks.character),
-              next_schedule=excluded.next_schedule,
+              character=CASE WHEN artworks.character_manual = 1 THEN artworks.character ELSE COALESCE(excluded.character, artworks.character) END,
               next_schedule=COALESCE(excluded.next_schedule, artworks.next_schedule),
               new_fans_count=excluded.new_fans_count, updated_at=excluded.updated_at""",
             (artwork_id, tweet_id, url, title, posted_at, status, next_schedule,
              character, new_fans_count, now, now),
         )
+        incoming_characters = characters if characters is not None else ([character] if character else None)
+        if incoming_characters is not None:
+            manual = connection.execute("SELECT character_manual FROM artworks WHERE id = ?", (artwork_id,)).fetchone()[0]
+            if character_manual or not manual:
+                _write_characters(connection, artwork_id, incoming_characters, manual=character_manual)
         if image_urls:
             connection.execute("DELETE FROM artwork_images WHERE artwork_id = ?", (artwork_id,))
             for order, image_url in enumerate(image_urls, 1):
@@ -207,6 +242,8 @@ def update_artwork(
     next_schedule: str | None = None,
     new_fans_count: int | None = None,
     character: str | None = None,
+    characters: list[str] | None = None,
+    character_manual: bool = False,
     db_path: str | None = None,
 ) -> None:
     """Update the mutable fields written by the collector."""
@@ -226,6 +263,8 @@ def update_artwork(
             f"UPDATE artworks SET {assignments} WHERE id = ?",
             (*fields.values(), artwork_id),
         )
+        if characters is not None or character is not None:
+            _write_characters(connection, artwork_id, characters if characters is not None else ([character] if character else []), manual=character_manual)
 
 
 def add_metric_snapshot(
@@ -387,6 +426,7 @@ def get_artwork(artwork_id: str, db_path: str | None = None) -> dict[str, Any] |
         if not row:
             return None
         artwork = dict(row)
+        artwork["characters"] = [item[0] for item in connection.execute("SELECT character FROM artwork_characters WHERE artwork_id = ? ORDER BY character", (artwork_id,))]
         artwork["images"] = [dict(item) for item in connection.execute("SELECT * FROM artwork_images WHERE artwork_id = ? ORDER BY image_order", (artwork_id,))]
         artwork["tags"] = [item[0] for item in connection.execute("SELECT tag FROM artwork_tags WHERE artwork_id = ? ORDER BY tag", (artwork_id,))]
         artwork["latest"] = _json_row(connection.execute("SELECT * FROM metric_snapshots WHERE artwork_id = ? ORDER BY elapsed_seconds DESC LIMIT 1", (artwork_id,)).fetchone())
@@ -403,3 +443,125 @@ def get_followers(from_date: str, to_date: str, db_path: str | None = None) -> l
     init_db(db_path)
     with _connect(db_path) as connection:
         return [dict(row) for row in connection.execute("SELECT * FROM account_metrics WHERE measured_at >= ? AND measured_at < ? ORDER BY measured_at", (from_date, to_date))]
+
+
+def _write_characters(connection, artwork_id, names, *, manual=False):
+    names = sorted({name.strip() for name in names if name.strip()})
+    connection.executemany("INSERT OR IGNORE INTO characters(name) VALUES (?)", [(name,) for name in names])
+    connection.execute("DELETE FROM artwork_characters WHERE artwork_id = ?", (artwork_id,))
+    connection.executemany("INSERT INTO artwork_characters VALUES (?, ?)", [(artwork_id, name) for name in names])
+    connection.execute(
+        "UPDATE artworks SET character = ?, character_manual = ?, updated_at = ? WHERE id = ?",
+        (names[0] if names else None, int(manual), _now(), artwork_id),
+    )
+
+
+def character_names(db_path=None):
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        return [row[0] for row in connection.execute("SELECT name FROM characters ORDER BY name")]
+
+
+def auto_fill_characters(artwork_id, names, db_path=None):
+    """Atomically protect manual selections (including an intentional empty set)."""
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute("SELECT character, character_manual FROM artworks WHERE id = ?", (artwork_id,)).fetchone()
+        if row and not row["character_manual"] and not row["character"] and names:
+            _write_characters(connection, artwork_id, names)
+
+
+def analysis_rows(source, stage="24h", db_path=None, *, from_date="0001-01-01", to_date="9999-12-31"):
+    """Read bounded, independent datasets. Never substitute a missing stage."""
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        if source == "followers":
+            rows = [dict(r) for r in connection.execute("SELECT * FROM account_metrics WHERE date(measured_at, '+9 hours') >= ? AND date(measured_at, '+9 hours') <= ? ORDER BY measured_at, id LIMIT 20001", (from_date, to_date))]
+            for row in rows:
+                row["row_id"] = row["id"]
+                row["date"] = datetime.fromisoformat(row["measured_at"]).astimezone(JST).date().isoformat()
+        else:
+            characters = {}
+            for r in connection.execute("SELECT artwork_id, character FROM artwork_characters ORDER BY character"):
+                characters.setdefault(r[0], []).append(r[1])
+            tags = {}
+            for r in connection.execute("SELECT artwork_id, tag FROM artwork_tags ORDER BY tag"):
+                tags.setdefault(r[0], []).append(r[1])
+            if source == "artworks":
+                rows = [dict(r) for r in connection.execute(
+                    """SELECT a.*, a.id AS artwork_id, m.id AS snapshot_id,
+                    m.stage, m.measured_at, m.elapsed_seconds, m.likes, m.retweets,
+                    m.impressions, m.followers, m.new_fans_count AS measured_new_fans
+                    FROM artworks a LEFT JOIN metric_snapshots m ON m.id = (
+                      SELECT id FROM metric_snapshots WHERE artwork_id = a.id AND stage = ?
+                      ORDER BY measured_at DESC, id DESC LIMIT 1)
+                    WHERE date(a.posted_at, '+9 hours') >= ? AND date(a.posted_at, '+9 hours') <= ?
+                    ORDER BY a.posted_at, a.id LIMIT 20001""", (stage, from_date, to_date))]
+            elif source == "snapshots":
+                rows = [dict(r) for r in connection.execute(
+                    """SELECT a.title, a.url, a.posted_at, a.status, m.*
+                    FROM metric_snapshots m JOIN artworks a ON a.id = m.artwork_id
+                    WHERE date(a.posted_at, '+9 hours') >= ? AND date(a.posted_at, '+9 hours') <= ?
+                    ORDER BY m.artwork_id, m.elapsed_seconds, m.measured_at, m.id LIMIT 20001""", (from_date, to_date))]
+            else:
+                raise ValueError("不明なデータ種類です")
+            for row in rows:
+                row["row_id"] = row["id"]
+                row["characters"] = characters.get(row["artwork_id"], [])
+                row["tags"] = tags.get(row["artwork_id"], [])
+                row["character"] = " + ".join(row["characters"]) or "未設定"
+                row["date"] = datetime.fromisoformat(row["posted_at"]).astimezone(JST).date().isoformat()
+                row["elapsed_hours"] = row["elapsed_seconds"] / 3600 if row.get("elapsed_seconds") is not None else None
+                if "measured_new_fans" in row:
+                    row["new_fans_count"] = row.pop("measured_new_fans")
+        if len(rows) > 20000:
+            raise ValueError("プロトタイプの上限は1回の分析につき20,000行です。期間を絞ってください")
+        return rows
+
+
+class ViewConflict(ValueError):
+    pass
+
+
+def _view_json(row):
+    value = dict(row)
+    value["config"] = json.loads(value["config"])
+    value.pop("owner")
+    return value
+
+
+def list_analysis_views(owner, db_path=None):
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        return [_view_json(row) for row in connection.execute(
+            "SELECT * FROM analytics_views WHERE owner = ? ORDER BY updated_at DESC, id", (owner,))]
+
+
+def create_analysis_view(owner, name, config, db_path=None):
+    init_db(db_path)
+    view_id = "view_" + uuid.uuid4().hex
+    with _connect(db_path) as connection:
+        connection.execute("INSERT INTO analytics_views VALUES (?, ?, ?, ?, 1, ?)",
+                           (view_id, owner, name, json.dumps(config, ensure_ascii=False), _now()))
+        return _view_json(connection.execute("SELECT * FROM analytics_views WHERE id = ?", (view_id,)).fetchone())
+
+
+def update_analysis_view(owner, view_id, name, config, revision, db_path=None):
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute("SELECT * FROM analytics_views WHERE id = ? AND owner = ?", (view_id, owner)).fetchone()
+        if not row:
+            raise KeyError(view_id)
+        if row["revision"] != revision:
+            raise ViewConflict("別のタブで更新されています。変更内容を保持したまま再読み込みしてください")
+        connection.execute("UPDATE analytics_views SET name = ?, config = ?, revision = revision + 1, updated_at = ? WHERE id = ? AND owner = ?",
+                           (name, json.dumps(config, ensure_ascii=False), _now(), view_id, owner))
+        return _view_json(connection.execute("SELECT * FROM analytics_views WHERE id = ?", (view_id,)).fetchone())
+
+
+def delete_analysis_view(owner, view_id, db_path=None):
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        return connection.execute("DELETE FROM analytics_views WHERE id = ? AND owner = ?", (view_id, owner)).rowcount > 0
