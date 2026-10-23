@@ -125,6 +125,41 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
                 page.get_by_label("計算式", exact=True).input_value()
                 == "likes / impressions * 100"
             )
+            page.goto(url + "/analytics")
+            page.wait_for_selector("#empty-views:not([hidden])")
+            assert page.locator("#profile-user").input_value() == "profile_a"
+            page.locator('#starter-templates [data-template="0"]').click()
+            page.wait_for_selector("#view-name")
+            page.get_by_label("ビュー名", exact=True).fill("利用者Aの分析")
+            page.wait_for_function(
+                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
+            )
+            page.locator("#profile-user").select_option("profile_b")
+            page.wait_for_selector("#empty-views:not([hidden])")
+            assert page.locator("#view-list button").count() == 0
+            page.locator("#profile-user").select_option("profile_a")
+            page.wait_for_function(
+                "document.querySelector('#view-name').value === '利用者Aの分析'"
+            )
+            page.once("dialog", lambda dialog: dialog.accept("ミツキ"))
+            page.get_by_role("button", name="名前を変更", exact=True).click()
+            page.wait_for_function(
+                "document.querySelector('#profile-user').selectedOptions[0].textContent === 'ミツキ'"
+            )
+            page.once("dialog", lambda dialog: dialog.accept("分析担当"))
+            page.locator("#profile-user").select_option("__new__")
+            page.wait_for_selector("#empty-views:not([hidden])")
+            assert page.locator("#profile-user option").count() == 4
+            page.locator("#profile-user").select_option("profile_a")
+            page.wait_for_function(
+                "document.querySelector('#view-name').value === '利用者Aの分析'"
+            )
+            another = browser.new_page()
+            another.goto(url + "/analytics")
+            another.wait_for_function(
+                "document.querySelector('#view-name').value === '利用者Aの分析'"
+            )
+            assert another.locator("#profile-user").input_value() == "profile_a"
             assert not errors
             browser.close()
     finally:

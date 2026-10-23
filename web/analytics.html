@@ -35,7 +35,7 @@
         <nav id="view-list" class="view-list" aria-label="保存したビュー"></nav>
         <div class="sidebar-bottom">
           <span class="private-label"
-            ><span data-icon="lock"></span>ビュー設定は自分だけ</span
+            ><span data-icon="copy"></span>ビュー設定は利用者別</span
           >
           <div id="account"></div>
         </div>
@@ -71,17 +71,7 @@
               <span data-icon="plus"></span>ビューを作成
             </button>
           </section>
-          <section id="login-gate" class="login-gate" hidden>
-            <span data-icon="lock"></span>
-            <h2>自分の分析スペースへ</h2>
-            <p id="login-description">
-              許可されたGoogleアカウントでログインしてください。
-            </p>
-            <a class="primary-button" href="/auth/login">Googleでログイン</a
-            ><a class="quiet-button" href="/analytics?demo=1"
-              >サンプルデータで試す <span aria-hidden="true">↗</span></a
-            >
-          </section>
+
           <section id="analysis-content" hidden>
             <div class="view-toolbar">
               <div class="view-title-wrap">
@@ -168,7 +158,8 @@
       <div id="settings-body"></div>
       <p id="settings-error" class="error-message" role="alert" hidden></p>
       <footer class="settings-footer">
-        <span data-icon="check"></span>変更は自分のビューに自動保存されます
+        <span data-icon="check"></span
+        >変更は選択した利用者のビューに自動保存されます
       </footer>
     </dialog>
     <dialog

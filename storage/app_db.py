@@ -72,6 +72,10 @@ CREATE TABLE IF NOT EXISTS artwork_characters (
     character TEXT NOT NULL REFERENCES characters(name),
     PRIMARY KEY (artwork_id, character)
 );
+CREATE TABLE IF NOT EXISTS analysis_profiles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
 CREATE TABLE IF NOT EXISTS analytics_views (
     id TEXT PRIMARY KEY,
     owner TEXT NOT NULL,
@@ -565,3 +569,40 @@ def delete_analysis_view(owner, view_id, db_path=None):
     init_db(db_path)
     with _connect(db_path) as connection:
         return connection.execute("DELETE FROM analytics_views WHERE id = ? AND owner = ?", (view_id, owner)).rowcount > 0
+
+
+def list_analysis_profiles(db_path=None):
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        if not connection.execute("SELECT 1 FROM analysis_profiles LIMIT 1").fetchone():
+            connection.executemany("INSERT INTO analysis_profiles VALUES (?, ?)",
+                                   [("profile_a", "利用者A"), ("profile_b", "利用者B")])
+        return [dict(row) for row in connection.execute("SELECT * FROM analysis_profiles ORDER BY rowid")]
+
+
+def get_analysis_profile(profile_id, db_path=None):
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        return _json_row(connection.execute("SELECT * FROM analysis_profiles WHERE id = ?", (profile_id,)).fetchone())
+
+
+def create_analysis_profile(name, db_path=None):
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("INSERT OR IGNORE INTO analysis_profiles VALUES (?, ?)", ("profile_" + uuid.uuid4().hex, name))
+        return dict(connection.execute("SELECT * FROM analysis_profiles WHERE name = ?", (name,)).fetchone())
+
+
+def rename_analysis_profile(profile_id, name, db_path=None):
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        if not connection.execute("SELECT 1 FROM analysis_profiles WHERE id = ?", (profile_id,)).fetchone():
+            raise KeyError(profile_id)
+        try:
+            connection.execute("UPDATE analysis_profiles SET name = ? WHERE id = ?", (name, profile_id))
+        except sqlite3.IntegrityError as error:
+            raise ViewConflict("同じ名前の利用者がいます。別の名前を入力してください") from error
+        return dict(connection.execute("SELECT * FROM analysis_profiles WHERE id = ?", (profile_id,)).fetchone())

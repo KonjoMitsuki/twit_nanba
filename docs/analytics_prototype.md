@@ -11,28 +11,17 @@ APP_DB_PATH=./app.db PYTHONPATH=. python -m uvicorn api.main:app --host 127.0.0.
 
 `http://127.0.0.1:8000/analytics?demo=1` を開きます。デモは生成した作品・計測・フォロワー履歴のみを使用し、アプリDB・Notion・Xからデータを取得しません。作品テーブル、キャラクター別の伸び、ダッシュボードを操作できます。利用者A/Bの切り替えで設定の分離も確認できます。
 
-デモの設定は利用者ごとにブラウザーのlocalStorageへ保存します。デモのキャラ編集は同じブラウザーのA/Bで共有します。実データの設定はGoogleのユーザーIDを所有者としてSQLiteへ保存するため、同じアカウントなら別端末でも使用できます。
+デモの設定は利用者ごとにブラウザーのlocalStorageへ保存します。デモのキャラ編集は同じブラウザーのA/Bで共有します。
 
-## Googleログイン
+## ログインなしの利用者切り替え
 
-Google Cloud ConsoleでWebアプリケーション用のOAuthクライアントを作成し、リダイレクトURIを登録します。以下を `.env` に設定してください。
+実データは `http://127.0.0.1:8000/analytics` からそのまま利用できます。Googleアカウント・OAuth設定・許可メール・セッション秘密鍵は不要です。
 
-```dotenv
-GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=your-client-secret
-GOOGLE_ALLOWED_EMAILS=person-one@example.com,person-two@example.com
-SESSION_SECRET=replace-with-a-random-secret-of-at-least-32-characters
-GOOGLE_REDIRECT_URI=https://your-app.example.com/auth/callback
-AUTH_COOKIE_SECURE=true
-```
+サイドバーの利用者名で切り替えます。最初は「利用者A」「利用者B」を用意し、名前の変更と利用者の追加ができます。選択は端末に記憶し、ビュー設定は利用者ID別にSQLiteへ保存します。同じ利用者名を別端末で選ぶと同じビューを利用できます。名前を変えてもIDと保存済みビューは維持します。
 
-許可メールアドレスは**異なる2件**が必要です。Googleの確認済みメールだけを許可します。OAuthのstate、nonce、トークン署名・issuer・audience・有効期限の検証にはAuthlibを使用します。アプリのセッションには利用者情報とCSRFトークンだけを保持し、Googleのアクセストークンを分析データとして保存しません。
+**利用者名は設定を分けるためのもので、本人確認やアクセス制限には使いません。誰でも別の利用者を選び、その設定を表示・編集できます。** 作品データとキャラ編集は全利用者で共通です。
 
-ローカルのHTTPで接続確認する場合のみ `AUTH_COOKIE_SECURE=false` とし、リダイレクトURIにも `http://127.0.0.1:8000/auth/callback` を登録します。本番はHTTPSを使用してください。リバースプロキシを利用する場合は、正しい外部URIと信頼するプロキシの転送ヘッダーを設定してください。
-
-認証サーバーへ通信する実行環境では `accounts.google.com`、`oauth2.googleapis.com`、`openidconnect.googleapis.com`、`www.googleapis.com` へのHTTPS接続が必要です。
-
-Google設定を有効にすると、既存のカレンダー・作品取得・巡回操作を含むアプリAPIにもログインが必要になります。分析APIは設定がない状態では503を返し、実データを公開しません。既存インストールとの互換性のため、Google設定がまったくない場合の従来APIの公開範囲は従来どおりです。公開運用時にはGoogle設定を完了してください。
+既存のカレンダー・作品取得・巡回操作にもログインは不要です。異なるサイトからのブラウザー経由の変更リクエストは拒否します。旧Google設定が環境変数に残っていても使用しません。以前のGoogle ID名義のビューを含め、既存レコードは削除しません。自動で新しい利用者に付け替える処理も行いません。
 
 ## ビューとダッシュボード
 
@@ -101,16 +90,16 @@ Google設定を有効にすると、既存のカレンダー・作品取得・�
 
 ## API
 
-- `GET /auth/login`、`GET /auth/callback`、`GET /auth/me`、`POST /auth/logout`
+- `GET/POST /api/profiles`、`PATCH /api/profiles/{id}`
 - `GET /api/analytics/metadata`
 - `POST /api/analytics/query`
 - `GET/POST /api/analytics/views`
 - `PATCH/DELETE /api/analytics/views/{id}`
 - `PATCH /api/artworks/{id}` に `{"characters": ["初音ミク", "巡音ルカ"]}`
 
-所有者はセッションから決め、クライアントからの所有者指定は受け付けません。他ユーザーのビュー取得・更新・削除はできません。更新には現在の `revision` が必要です。認証下の変更系APIと分析クエリーには `/auth/me` で取得した `X-CSRF-Token` ヘッダーが必要です。
+分析APIは利用者一覧から選んだIDを `X-Analysis-Profile` ヘッダーで受け取り、その利用者の設定を読み書きします。未選択・存在しないIDは400です。選択中とは別の利用者のビューIDを直接指定しても更新・削除はできませんが、誰でも利用者を切り替えられます。更新には現在の `revision` が必要です。Cookie・CSRFトークン・秘密情報の設定は不要です。
 
-公開の `/demo-api/metadata`、`POST /demo-api/query` は生成データだけを使用します。実データの認証を回避する経路にはなりません。
+公開の `/demo-api/metadata`、`POST /demo-api/query` は生成データだけを使用します。実データは読み書きしません。
 
 ## 検証とプロトタイプの範囲
 
@@ -126,8 +115,8 @@ ANALYTICS_BROWSER_TESTS=1 PYTHONPATH=. python -m pytest tests/test_analytics_bro
 # 必要なら PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium を指定
 ```
 
-APIテストではGoogleをモックし、本番DB・本番Notion・Xの実投稿は使いません。欠測、JST境界、配分、計算式の制限、加重統計、ユーザー分離、CSRF、競合、旧DB互換性を検証します。ブラウザーではデモのPC/375px表示、軸の変更と再読み込み、キャラ編集、個人設定の分離、スマホの計算式編集、およびGoogleをモックした実APIの保存・競合復元を確認しています。
+APIテストでは本番DB・本番Notion・Xの実投稿は使いません。欠測、JST境界、配分、計算式の制限、加重統計、利用者別の設定、名前の追加・変更、別端末の切り替え、競合、旧DB互換性を検証します。ブラウザーではデモのPC/375px表示、軸の変更と再読み込み、キャラ編集、個人設定の分離、スマホの計算式編集、およびログインなしの実APIによる保存と切り替えを確認しています。
 
 初期版の書き出し機能は含みません。上限は1ビュー12パネル、1パネル10計算列・6数値系列、1回の集計20,000行、グラフ2,500点です。期間はDB側でも絞り込みます。数値テーブルのグラフ代替表示は先頭200点、作品テーブルは50行ずつ表示します。
 
-Googleの実アカウント接続には、利用者側のOAuthクライアント・許可メールアドレス・セッション秘密鍵の設定が必要です。収集間隔、Notionへの保存、cron・本番プロセス設定はこの変更では更新しません。
+収集間隔、Notionへの保存、cron・本番プロセス設定はこの変更では更新しません。

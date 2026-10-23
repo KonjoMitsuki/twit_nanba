@@ -1,10 +1,10 @@
-"""Private, user-owned analysis views and read-only analysis queries."""
+"""Profile-separated analysis views and read-only analysis queries."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import Field, field_validator
 
 import config
-from api.auth import require_user
+from api.profiles import selected_profile
 from processing.analysis import available_fields, query, validate_panel
 from processing.analysis_demo import CHARACTERS, demo_rows
 from processing.analysis_models import Panel, StrictModel, ViewCreate, ViewUpdate
@@ -12,7 +12,9 @@ from processing.character_mapper import load_character_map
 from storage import app_db
 
 router = APIRouter(
-    prefix="/api/analytics", dependencies=[Depends(require_user)], tags=["analytics"]
+    prefix="/api/analytics",
+    dependencies=[Depends(selected_profile)],
+    tags=["analytics"],
 )
 demo_router = APIRouter(prefix="/demo-api", tags=["synthetic demo"])
 
@@ -105,14 +107,14 @@ def run_query(panel: Panel):
 
 @router.get("/views")
 def views(request: Request):
-    return {"views": app_db.list_analysis_views(require_user(request)["id"])}
+    return {"views": app_db.list_analysis_views(selected_profile(request)["id"])}
 
 
 @router.post("/views", status_code=201)
 def create_view(payload: ViewCreate, request: Request):
     validate_config(payload)
     return app_db.create_analysis_view(
-        require_user(request)["id"], payload.name, payload.config.model_dump()
+        selected_profile(request)["id"], payload.name, payload.config.model_dump()
     )
 
 
@@ -121,7 +123,7 @@ def update_view(view_id: str, payload: ViewUpdate, request: Request):
     validate_config(payload)
     try:
         return app_db.update_analysis_view(
-            require_user(request)["id"],
+            selected_profile(request)["id"],
             view_id,
             payload.name,
             payload.config.model_dump(),
@@ -135,5 +137,5 @@ def update_view(view_id: str, payload: ViewUpdate, request: Request):
 
 @router.delete("/views/{view_id}", status_code=204)
 def delete_view(view_id: str, request: Request):
-    if not app_db.delete_analysis_view(require_user(request)["id"], view_id):
+    if not app_db.delete_analysis_view(selected_profile(request)["id"], view_id):
         raise HTTPException(404, "ビューが見つかりません")

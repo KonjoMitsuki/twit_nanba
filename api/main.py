@@ -3,22 +3,19 @@
 import fcntl
 import logging
 import time
-import os
-import secrets
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field, ConfigDict
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.sessions import SessionMiddleware
 
 import config
 from scraper.auto_detect import check_new_art_post
 from scraper.browser import create_browser_context, random_wait
 from processing.character_mapper import character_for_tags, characters_for_tags
 from storage import app_db
-from api import auth, analytics
+from api import profiles, analytics
 
 app = FastAPI(title="X Art Analytics API", version="1.0.0")
 logger = logging.getLogger("api")
@@ -192,14 +189,8 @@ def artwork_page(artwork_id: str):
     return FileResponse(WEB_DIR / "detail.html")
 
 
-app.include_router(auth.router)
+app.include_router(profiles.router)
 app.include_router(analytics.router)
 app.include_router(analytics.demo_router)
-app.middleware("http")(auth.protect_api)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=os.getenv("SESSION_SECRET") or secrets.token_urlsafe(48),
-    session_cookie="xart_session", same_site="lax", max_age=60 * 60 * 24 * 7,
-    https_only=os.getenv("AUTH_COOKIE_SECURE", "true").lower() != "false",
-)
+app.middleware("http")(profiles.same_origin_writes)
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

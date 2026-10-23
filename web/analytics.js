@@ -1,4 +1,4 @@
-/* Personal view designer. Real data uses authenticated APIs; demo is synthetic. */
+/* Personal view designer. Real data uses public named profiles; demo is synthetic. */
 (() => {
   const $ = (selector) => document.querySelector(selector);
   const esc = AnalysisCharts.escape,
@@ -39,7 +39,7 @@
   hydrateIcons();
   const state = {
     user: null,
-    csrf: "",
+    profiles: [],
     metadata: null,
     views: [],
     view: null,
@@ -205,7 +205,7 @@
       ...options,
       headers: {
         "Content-Type": "application/json",
-        ...(state.csrf ? { "X-CSRF-Token": state.csrf } : {}),
+        ...(state.user && !DEMO ? { "X-Analysis-Profile": state.user.id } : {}),
         ...options.headers,
       },
     });
@@ -365,30 +365,67 @@
   function renderAccount() {
     if (DEMO) {
       $("#account").innerHTML =
-        `<span class="avatar">${state.user.id === "demo_a" ? "A" : "B"}</span><label><span class="sr-only">デモ利用者</span><select id="demo-user"><option value="demo_a">デモユーザー A</option><option value="demo_b">デモユーザー B</option></select></label>`;
+        `<label><span class="sr-only">デモ利用者</span><select id="demo-user"><option value="demo_a">デモユーザー A</option><option value="demo_b">デモユーザー B</option></select></label>`;
       $("#demo-user").value = state.user.id;
       $("#demo-user").onchange = async (event) => {
         await saveView(state.view);
         store("xart_demo_user", event.target.value);
         location.reload();
       };
-    } else {
-      $("#account").innerHTML =
-        `<span class="avatar">${esc(state.user.name.slice(0, 1))}</span>${esc(state.user.name)}<br><button id="logout" class="quiet-button">ログアウト</button>`;
-      $("#logout").onclick = async () => {
-        if (state.saving.size) {
-          toast("設定を保存中です。完了後にログアウトしてください");
-          return;
-        }
-        if (state.view) await saveView(state.view);
-        if (state.dirty.size) {
-          toast("未保存の変更があります。更新して保存を再試行してください");
-          return;
-        }
-        await api("/auth/logout", { method: "POST" });
-        location.reload();
-      };
+      return;
     }
+    $("#account").innerHTML =
+      `<label><span class="sr-only">利用者</span><select id="profile-user">${state.profiles.map((profile) => `<option value="${esc(profile.id)}">${esc(profile.name)}</option>`).join("")}<option value="__new__">＋ 利用者を追加</option></select></label><button id="rename-profile" class="quiet-button">名前を変更</button>`;
+    $("#profile-user").value = state.user.id;
+    $("#profile-user").onchange = async (event) => {
+      const selected = event.target.value;
+      event.target.value = state.user.id;
+      if (state.saving.size) {
+        toast("保存が完了してから切り替えてください");
+        return;
+      }
+      try {
+        for (const view of state.views)
+          if (state.dirty.has(view.id)) await saveView(view);
+        if (state.dirty.size || state.recovery.length) {
+          toast("未保存の変更を保存・復元してから切り替えてください");
+          return;
+        }
+        let profileId = selected;
+        if (selected === "__new__") {
+          const name = prompt("利用者の名前を入力してください");
+          if (!name?.trim()) return;
+          profileId = (
+            await api("/api/profiles", {
+              method: "POST",
+              body: JSON.stringify({ name: name.trim() }),
+            })
+          ).id;
+        }
+        store("xart_profile_id", profileId);
+        location.reload();
+      } catch (error) {
+        setError(error.message);
+      }
+    };
+    $("#rename-profile").onclick = async () => {
+      const name = prompt("利用者の新しい名前", state.user.name);
+      if (!name?.trim() || name.trim() === state.user.name) return;
+      try {
+        const profile = await api(
+          `/api/profiles/${encodeURIComponent(state.user.id)}`,
+          { method: "PATCH", body: JSON.stringify({ name: name.trim() }) },
+        );
+        state.user = profile;
+        state.profiles = state.profiles.map((item) =>
+          item.id === profile.id ? profile : item,
+        );
+        renderAccount();
+        toast("利用者の名前を変更しました");
+      } catch (error) {
+        setError(error.message);
+      }
+    };
   }
   function renderViewList() {
     $("#view-list").innerHTML = state.views
@@ -1167,7 +1204,7 @@
   };
   $("#new-view").onclick = $("#sidebar-add").onclick = () => {
     if (!state.user) {
-      toast("ログインするか、サンプルデータでお試しください");
+      toast("利用者一覧を読み込んでから操作してください");
       return;
     }
     $("#create-dialog").showModal();
@@ -1252,6 +1289,10 @@
     }
   };
   $("#refresh").onclick = async () => {
+    if (!state.user) {
+      await init();
+      return;
+    }
     if (state.recovery.length) {
       openConflict();
       return;
@@ -1316,9 +1357,12 @@
           ]),
         ];
       } else {
-        const auth = await api("/auth/me");
-        state.user = auth.user;
-        state.csrf = auth.csrf;
+        state.profiles = (await api("/api/profiles")).profiles;
+        state.user =
+          state.profiles.find(
+            (profile) => profile.id === getStored("xart_profile_id", null),
+          ) || state.profiles[0];
+        store("xart_profile_id", state.user.id);
         const [metadata, views] = await Promise.all([
           api("/api/analytics/metadata"),
           api("/api/analytics/views"),
@@ -1344,13 +1388,7 @@
         if (state.dirty.has(view.id)) saveView(view);
       openConflict();
     } catch (error) {
-      if (!state.user) {
-        $("#login-gate").hidden = false;
-        $("#login-description").textContent =
-          error.status === 503
-            ? "Googleログインの接続設定が必要です。先にサンプルデータで操作を確認できます。"
-            : "許可されたGoogleアカウントでログインしてください。";
-      } else setError(error.message);
+      setError(error.message);
     }
   }
   init();
