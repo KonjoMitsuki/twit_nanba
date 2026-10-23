@@ -41,9 +41,13 @@ def character_for_tags(
     return None
 
 
-def characters_for_tags(tags: list[str], path: str | Path) -> list[str]:
-    """Return all distinct matched characters, keeping the legacy map rules."""
-    mapping = load_character_map(path)
+def match_characters(tags: list[str], mapping: dict[str, str]) -> list[str]:
+    """Return all distinct matched characters from an already loaded map."""
     return list(dict.fromkeys(
         mapping[normalize_tag(tag)] for tag in tags if normalize_tag(tag) in mapping
     ))
+
+
+def characters_for_tags(tags: list[str], path: str | Path) -> list[str]:
+    """Return all distinct matched characters, keeping the legacy map rules."""
+    return match_characters(tags, load_character_map(path))

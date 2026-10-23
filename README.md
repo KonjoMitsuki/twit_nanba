@@ -164,6 +164,15 @@ tag,character
 
 作品詳細ページでは、キャラクター名の「編集」ボタンから直接変更できます。空欄で保存すると未設定（NULL）に戻ります。「タグから自動入力」は、キャラクターが未設定の作品だけを補完します。
 
+既存作品をまとめて補完する場合は、次のスクリプトを実行します。`--dry-run` で変更予定を確認してから本実行してください。
+
+```bash
+PYTHONPATH=. python scripts/auto_fill_characters.py --db ./app.db --dry-run
+PYTHONPATH=. python scripts/auto_fill_characters.py --db ./app.db
+```
+
+全作品のタグを走査し、キャラクターが未設定の作品だけを更新します。手動で設定・クリアした作品と、すでにキャラクターが入っている作品は変更しません。対応表を差し替える場合は `--map ./data/character_map.csv` を指定できます。何度実行しても同じ結果になります。
+
 ### 計測の実行
 
 ```bash

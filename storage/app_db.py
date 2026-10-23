@@ -484,6 +484,62 @@ def auto_fill_characters(artwork_id, names, db_path=None):
             _write_characters(connection, artwork_id, names)
 
 
+def auto_fill_missing_characters(resolve, db_path=None, *, dry_run=False):
+    """Fill every artwork that has no character yet from its stored tags.
+
+    ``resolve`` receives an artwork's tags and returns the matched characters.
+    Manual selections, including an intentional empty set, are never touched,
+    and already filled artworks are skipped so repeated scans are idempotent.
+    """
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        if not dry_run:
+            connection.execute("BEGIN IMMEDIATE")
+        scanned = connection.execute("SELECT COUNT(*) FROM artworks").fetchone()[0]
+        skipped_manual = connection.execute(
+            "SELECT COUNT(*) FROM artworks WHERE character_manual = 1"
+        ).fetchone()[0]
+        candidates = connection.execute(
+            """SELECT a.id, a.title
+            FROM artworks a
+            WHERE a.character_manual = 0
+              AND (a.character IS NULL OR TRIM(a.character) = '')
+              AND NOT EXISTS (
+                SELECT 1 FROM artwork_characters c WHERE c.artwork_id = a.id
+              )
+            ORDER BY a.posted_at, a.id"""
+        ).fetchall()
+        tags_by_artwork: dict[str, list[str]] = {}
+        for row in connection.execute(
+            "SELECT artwork_id, tag FROM artwork_tags ORDER BY artwork_id, tag"
+        ):
+            tags_by_artwork.setdefault(row[0], []).append(row[1])
+        changes = []
+        unmatched = 0
+        for row in candidates:
+            names = sorted({
+                name.strip()
+                for name in resolve(tags_by_artwork.get(row["id"], []))
+                if name.strip()
+            })
+            if not names:
+                unmatched += 1
+                continue
+            changes.append({"id": row["id"], "title": row["title"], "characters": names})
+            if not dry_run:
+                _write_characters(connection, row["id"], names)
+    return {
+        "dry_run": dry_run,
+        "scanned": scanned,
+        "skipped_manual": skipped_manual,
+        "skipped_existing": scanned - skipped_manual - len(candidates),
+        "unmatched": unmatched,
+        "filled": 0 if dry_run else len(changes),
+        "would_fill": len(changes) if dry_run else 0,
+        "changes": changes,
+    }
+
+
 def analysis_rows(source, stage="24h", db_path=None, *, from_date="0001-01-01", to_date="9999-12-31"):
     """Read bounded, independent datasets. Never substitute a missing stage."""
     init_db(db_path)
