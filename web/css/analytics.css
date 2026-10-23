@@ -214,6 +214,27 @@ svg.icon {
   width: 17px;
   height: 17px;
 }
+.view-lock-mark {
+  display: inline-flex;
+  color: #86682b;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.view-lock-mark svg {
+  width: 13px;
+  height: 13px;
+}
+.view-dirty {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #c47b2c;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.view-lock-mark + .view-dirty {
+  margin-left: 0;
+}
 .sidebar-bottom {
   margin-top: auto;
   padding: 30px 8px 0;
@@ -284,14 +305,31 @@ svg.icon {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 10px;
 }
 #save-status {
   font-size: 11px;
   color: var(--muted);
 }
+#save-status:empty {
+  display: none;
+}
 #save-status[data-error] {
   color: var(--danger);
+}
+#save-view {
+  min-height: 34px;
+  padding: 6px 13px;
+}
+#save-view .icon {
+  width: 14px;
+  height: 14px;
+}
+.primary-button:disabled,
+.primary-button-sm:disabled,
+#save-view:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .quiet-button,
 .primary-button,
@@ -430,6 +468,29 @@ h1 {
   border-radius: 4px;
   white-space: nowrap;
 }
+.lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f4efe3;
+  border-color: #e2d6bb;
+  color: #765b24;
+}
+.lock-badge[hidden] {
+  display: none;
+}
+.lock-badge .icon {
+  width: 12px;
+  height: 12px;
+}
+#view-name[readonly] {
+  color: var(--muted);
+  cursor: default;
+}
+#toggle-lock.is-locked {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 .view-actions {
   display: flex;
   align-items: center;
@@ -546,10 +607,44 @@ h1 {
   min-height: 32px;
   padding: 7px;
 }
+.panel-controls .panel-settings-button {
+  width: auto;
+  gap: 4px;
+  padding: 7px 9px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.panel-settings-button .icon {
+  width: 14px;
+  height: 14px;
+}
 .panel-meta {
   padding: 0 19px;
   color: var(--muted);
   font-size: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+.panel-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.panel-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 9px;
+  color: var(--muted);
+  line-height: 1.5;
 }
 .chart-container {
   min-height: 240px;
@@ -626,6 +721,66 @@ h1 {
   color: var(--muted);
   font-size: 12px;
 }
+.panel-empty-icon {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.panel-empty-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+.panel-empty strong {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+.panel-empty p {
+  margin: 0 auto 14px;
+  max-width: 360px;
+  line-height: 1.6;
+}
+.panel-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.panel-empty-actions .quiet-button {
+  border: 1px solid var(--line);
+  background: white;
+  min-height: 34px;
+  padding: 6px 12px;
+  color: var(--ink);
+}
+.panel-empty-actions .quiet-button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.panel-empty-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #f4efe3;
+  color: #765b24;
+  font-size: 10px;
+}
+.panel-empty small {
+  display: block;
+  margin-top: 12px;
+  font-size: 10px;
+  color: var(--muted);
+}
 .panel-error {
   padding: 28px 20px;
   color: var(--danger);
@@ -673,6 +828,17 @@ h1 {
 .add-panel:hover {
   background: var(--accent-soft);
   color: var(--accent);
+}
+.view-toolbar button:disabled,
+.view-actions button:disabled,
+.add-panel:disabled,
+.panel-controls button:disabled,
+.table-scroll th button:disabled {
+  cursor: not-allowed;
+}
+.add-panel:disabled:hover {
+  background: var(--surface);
+  color: var(--muted);
 }
 .workspace-note {
   display: flex;
@@ -844,6 +1010,177 @@ dialog::backdrop {
   width: 13px;
   height: 13px;
 }
+.settings-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 0;
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.settings-context strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.settings-summary {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 7px;
+  padding: 9px 11px;
+  margin-bottom: 12px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.settings-summary-line {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.settings-summary-target {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+.settings-warning {
+  font-size: 11px;
+  line-height: 1.55;
+  color: #7c541b;
+  background: #fff8e9;
+  border: 1px solid #efd9ae;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0 0 14px;
+}
+.source-note {
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 9px 10px;
+}
+.choice-cards {
+  border: 0;
+  padding: 0;
+  margin: 0 0 16px;
+  display: grid;
+  gap: 8px;
+}
+.source-cards {
+  grid-template-columns: 1fr;
+}
+.chart-cards {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.source-card,
+.chart-card {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 11px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.source-card:hover,
+.chart-card:hover {
+  border-color: #bfcfc6;
+  background: #fbfcfa;
+}
+.source-card.is-selected,
+.chart-card.is-selected {
+  border-color: var(--accent);
+  background: #f3f9f6;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.source-card:focus-within,
+.chart-card:focus-within {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 1px;
+}
+.source-card input,
+.chart-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.choice-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: var(--accent);
+  line-height: 0;
+}
+.choice-check .icon {
+  width: 14px;
+  height: 14px;
+}
+.choice-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.choice-icon .icon {
+  width: 16px;
+  height: 16px;
+}
+.choice-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.choice-body strong {
+  font-size: 12px;
+  color: var(--ink);
+}
+.choice-row {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.choice-use {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.choice-example {
+  font-size: 10px;
+  color: var(--muted);
+}
+.choice-period {
+  font-size: 9.5px;
+  color: var(--muted);
+  opacity: 0.8;
+}
+.chart-card {
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px;
+}
+.chart-card .choice-icon {
+  width: 26px;
+  height: 26px;
+}
+.chart-card .choice-body strong {
+  font-size: 11.5px;
+}
+.chart-card .choice-body {
+  padding-right: 10px;
+}
+.chart-card .choice-use {
+  font-size: 9.5px;
+}
 .settings-tabs {
   display: flex;
   gap: 4px;
@@ -853,7 +1190,7 @@ dialog::backdrop {
   margin-bottom: 20px;
   scrollbar-width: none;
   position: sticky;
-  top: 44px;
+  top: 68px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
   z-index: 9;
@@ -1120,6 +1457,25 @@ dialog::backdrop {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+.settings-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+#undo-settings {
+  min-height: 32px;
+  padding: 5px 10px;
+  font-size: 11px;
+}
+#undo-settings:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+#settings-save-state[data-error] {
+  color: #a34646;
 }
 .settings-footer .icon {
   width: 14px;
@@ -1422,6 +1778,18 @@ dialog::backdrop {
   margin-top: 7px;
   white-space: normal;
 }
+.panel-type-lead {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: -4px 0 16px;
+}
+.panel-type-grid .template-button {
+  min-height: 118px;
+}
+.panel-type-grid .template-button .icon {
+  margin-bottom: 10px;
+}
 .login-gate {
   text-align: center;
   padding: 60px 20px;
@@ -1542,6 +1910,9 @@ dialog::backdrop {
   }
   .soft-badge {
     display: none;
+  }
+  #view-lock-state {
+    display: inline-flex;
   }
   #view-name {
     width: 190px;
@@ -1673,9 +2044,14 @@ dialog::backdrop {
   .icon-button {
     min-height: 44px;
   }
-  .workspace-topbar .quiet-button {
+  .workspace-topbar .quiet-button,
+  .workspace-topbar .primary-button {
     font-size: 10px;
-    padding: 6px;
+    padding: 6px 8px;
+  }
+  #save-view {
+    min-width: 54px;
+    min-height: 44px;
   }
   .demo-banner {
     padding: 8px 16px;
@@ -1721,6 +2097,7 @@ dialog::backdrop {
   }
   .view-title-wrap {
     width: 100%;
+    flex-wrap: wrap;
   }
   #view-name {
     width: 100%;
@@ -1822,11 +2199,60 @@ dialog::backdrop {
     min-height: 46px;
   }
   .settings-tabs {
-    gap: 5px;
+    gap: 3px;
   }
   .settings-tabs button {
+    flex: 1;
+    justify-content: center;
+    gap: 3px;
+    font-size: 11.5px;
+    padding: 8px 4px;
+    min-height: 44px;
+  }
+  .settings-tabs button .icon {
+    width: 13px;
+    height: 13px;
+  }
+  .settings-context,
+  .settings-summary {
     font-size: 12px;
-    padding: 9px 10px;
+  }
+  .settings-summary-target {
+    font-size: 11px;
+  }
+  .chart-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .source-card,
+  .chart-card {
+    padding: 12px;
+  }
+  .choice-use {
+    font-size: 11px;
+  }
+  .settings-footer {
+    flex-wrap: wrap;
+    bottom: -20px;
+  }
+  .settings-footer-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  #undo-settings,
+  #save-settings {
+    min-height: 44px;
+  }
+  .panel-action-label {
+    display: none;
+  }
+  .panel-controls .panel-settings-button {
+    width: 36px;
+    padding: 7px;
+  }
+  .panel-chips {
+    width: 100%;
+  }
+  .panel-empty-actions .quiet-button {
     min-height: 44px;
   }
   .settings-field > label {

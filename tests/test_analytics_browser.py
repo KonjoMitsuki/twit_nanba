@@ -22,6 +22,12 @@ pytestmark = pytest.mark.skipif(
 def test_personal_designer_on_desktop_and_phone(tmp_path):
     from playwright.sync_api import sync_playwright
 
+    def save_changes(target, in_settings=False):
+        target.locator("#save-settings" if in_settings else "#save-view").click()
+        target.wait_for_function(
+            "document.querySelector('#save-status').textContent === '保存済み'"
+        )
+
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -108,34 +114,90 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             page.wait_for_function(
                 "document.querySelectorAll('.chart-svg').length === 4"
             )
+            assert page.locator("#save-status").inner_text() == "保存済み"
+            assert page.locator("#save-view").is_disabled()
             assert page.locator("#single-tabs").is_hidden()
             assert page.locator(".panel-error").count() == 0
             page.get_by_role(
+                "button", name="表・グラフを追加", exact=True
+            ).click()
+            assert page.locator("#panel-type-dialog").is_visible()
+            assert page.locator("[data-panel-type]").count() == 7
+            page.keyboard.press("Escape")
+            page.get_by_role(
                 "button", name="投稿後のいいね推移の設定", exact=True
             ).click()
-            page.get_by_role("button", name="軸・集計", exact=True).click()
+            assert page.locator("#settings-summary").is_visible()
+            assert page.locator("[data-source-card]").count() == 3
+            assert page.locator(".chart-card").count() == 7
+            assert page.locator("#undo-settings").is_disabled()
+            page.locator(".source-card").filter(has_text="作品を比較").click()
+            assert "作品を比較" in page.locator("#settings-summary").inner_text()
+            assert page.get_by_label("投稿からどの時点？", exact=True).is_visible()
+            page.locator("#undo-settings").click()
+            assert "投稿後の伸びを追う" in page.locator("#settings-summary").inner_text()
+            assert page.get_by_label("投稿からどの時点？", exact=True).count() == 0
+            page.get_by_role("button", name="表示", exact=True).click()
             page.get_by_label("横軸・分類", exact=True).select_option("measured_at")
-            page.wait_for_function(
-                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
+            assert page.locator("#undo-settings").is_enabled()
+            page.locator("#undo-settings").click()
+            assert (
+                page.get_by_label("横軸・分類", exact=True).input_value()
+                == "elapsed_hours"
             )
+            page.get_by_label("横軸・分類", exact=True).select_option("measured_at")
+            assert page.locator("#save-status").inner_text() == "未保存"
+            assert page.locator("#save-view").is_enabled()
+            assert page.locator("#view-list .view-dirty").count() == 1
+            page.wait_for_timeout(900)
+            assert page.locator("#save-status").inner_text() == "未保存"
+            save_changes(page, in_settings=True)
+            assert page.locator("#view-list .view-dirty").count() == 0
+            assert page.locator("#save-view").is_disabled()
             page.keyboard.press("Escape")
             page.reload()
             page.wait_for_selector(".chart-svg")
             page.get_by_role(
                 "button", name="投稿後のいいね推移の設定", exact=True
             ).click()
-            page.get_by_role("button", name="軸・集計", exact=True).click()
+            page.get_by_role("button", name="表示", exact=True).click()
             assert (
                 page.get_by_label("横軸・分類", exact=True).input_value()
                 == "measured_at"
             )
             page.keyboard.press("Escape")
+            page.locator("#toggle-lock").click()
+            page.wait_for_selector("#view-lock-state:not([hidden])")
+            assert page.locator("#toggle-lock").get_attribute("aria-pressed") == "true"
+            assert not page.get_by_label("ビュー名", exact=True).is_editable()
+            assert page.locator("#layout").is_disabled()
+            assert page.get_by_role(
+                "button", name="表・グラフを追加", exact=True
+            ).is_disabled()
+            assert page.get_by_role(
+                "button", name="ビューを削除", exact=True
+            ).is_disabled()
+            assert page.get_by_role(
+                "button", name="投稿後のいいね推移の設定", exact=True
+            ).is_disabled()
+            assert page.locator("#view-list .view-lock-mark").count() == 1
+            page.reload()
+            page.wait_for_selector("#view-lock-state:not([hidden])")
+            assert not page.get_by_label("ビュー名", exact=True).is_editable()
+            page.locator("#toggle-lock").click()
+            page.wait_for_function(
+                "document.querySelector('#view-lock-state').hidden"
+            )
+            assert page.get_by_label("ビュー名", exact=True).is_editable()
+            assert page.get_by_role(
+                "button", name="表・グラフを追加", exact=True
+            ).is_enabled()
             page.locator("#demo-user").select_option("demo_b")
             page.wait_for_selector(".chart-svg")
             page.get_by_role(
                 "button", name="投稿後のいいね推移の設定", exact=True
             ).click()
-            page.get_by_role("button", name="軸・集計", exact=True).click()
+            page.get_by_role("button", name="表示", exact=True).click()
             assert (
                 page.get_by_label("横軸・分類", exact=True).input_value()
                 == "elapsed_hours"
@@ -151,7 +213,7 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             page.get_by_role(
                 "button", name="投稿後のいいね推移の設定", exact=True
             ).click()
-            page.get_by_role("button", name="計算式", exact=True).click()
+            page.get_by_role("button", name="詳細", exact=True).click()
             page.locator('[data-example="rate"]').click()
             assert (
                 page.get_by_label("計算式", exact=True).input_value()
@@ -177,20 +239,18 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             ).first.get_attribute("href")
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.get_by_role("button", name="作品テーブルの設定", exact=True).click()
-            page.get_by_role("button", name="軸・集計", exact=True).click()
+            page.get_by_role("button", name="表示", exact=True).click()
+            assert page.get_by_text("表示列の選択", exact=True).is_visible()
+            assert page.get_by_text("行のグループ化", exact=True).is_visible()
             page.get_by_label("投稿写真を表示", exact=True).locator("..").click()
             assert not page.get_by_label("投稿写真を表示", exact=True).is_checked()
-            page.wait_for_function(
-                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
-            )
+            save_changes(page, in_settings=True)
             page.keyboard.press("Escape")
             page.reload()
             page.wait_for_selector(".table-scroll")
             assert page.locator(".artwork-thumbnail").count() == 0
             page.get_by_label("ビュー名", exact=True).fill("利用者Aの分析")
-            page.wait_for_function(
-                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
-            )
+            save_changes(page)
             page.locator("#profile-user").select_option("profile_b")
             page.wait_for_selector("#empty-views:not([hidden])")
             assert page.locator("#view-list button").count() == 0
@@ -218,16 +278,14 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             )
             assert another.locator("#profile-user").input_value() == "profile_a"
             another.get_by_role("button", name="作品テーブルの設定", exact=True).click()
-            another.get_by_role("button", name="グループ・並べ替え", exact=True).click()
+            another.get_by_role("button", name="表示", exact=True).click()
             another.get_by_label("グループ化する項目", exact=True).select_option(
                 "character"
             )
             another.get_by_label("並べ替え項目 1", exact=True).select_option("likes")
             another.get_by_role("button", name="並べ替え条件を追加", exact=True).click()
             another.get_by_label("並べ替え項目 2", exact=True).select_option("date")
-            another.wait_for_function(
-                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
-            )
+            save_changes(another, in_settings=True)
             another.keyboard.press("Escape")
             another.wait_for_function(
                 "document.querySelectorAll('.table-group').length === 3"
@@ -239,6 +297,7 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
                 first.locator("tbody tr").first.locator("td").first.inner_text()
                 == "broken"
             )
+            first.locator("summary").click()
             with another.expect_response(
                 lambda response: (
                     "/api/analytics/views/" in response.url
@@ -246,15 +305,12 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
                     and response.status == 200
                 )
             ):
-                first.locator("summary").click()
-            another.wait_for_function(
-                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
-            )
+                save_changes(another)
             another.reload()
             another.wait_for_selector(".table-group")
             assert another.locator(".table-group").first.evaluate("el => !el.open")
             another.get_by_role("button", name="作品テーブルの設定", exact=True).click()
-            another.get_by_role("button", name="グループ・並べ替え", exact=True).click()
+            another.get_by_role("button", name="表示", exact=True).click()
             assert (
                 another.get_by_label("並べ替え項目 1", exact=True).input_value()
                 == "likes"
@@ -266,9 +322,7 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             another.get_by_label("複数の値がある行", exact=True).select_option(
                 "combination"
             )
-            another.wait_for_function(
-                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
-            )
+            save_changes(another, in_settings=True)
             another.keyboard.press("Escape")
             another.wait_for_function(
                 "Array.from(document.querySelectorAll('.table-group > summary')).some(el => el.textContent.includes('A + B'))"
@@ -334,17 +388,15 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             another.set_viewport_size({"width": 1440, "height": 1000})
             another.on("pageerror", lambda error: errors.append(str(error)))
             another.get_by_role("button", name="作品テーブルの設定", exact=True).click()
-            another.get_by_label("表示形式", exact=True).select_option("scatter")
-            another.get_by_role("button", name="軸・集計", exact=True).click()
+            another.locator('.chart-card').filter(has_text="散布図").click()
+            another.get_by_role("button", name="表示", exact=True).click()
             another.get_by_label("横軸・分類", exact=True).select_option("likes")
             another.get_by_label("系列・色分け", exact=True).select_option("character")
             assert another.get_by_label("集計方法", exact=True).count() == 0
             another.wait_for_function(
                 "document.querySelectorAll('.scatter-point').length === 4"
             )
-            another.wait_for_function(
-                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
-            )
+            save_changes(another, in_settings=True)
             another.keyboard.press("Escape")
             another.reload()
             another.wait_for_function(
@@ -378,7 +430,7 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             another.locator("[data-legend='B|likes']").click()
             assert another.locator(".scatter-point").count() == 3
             another.get_by_role("button", name="作品テーブルの設定", exact=True).click()
-            another.get_by_role("button", name="軸・集計", exact=True).click()
+            another.get_by_role("button", name="表示", exact=True).click()
             assert (
                 another.get_by_label("横軸・分類", exact=True).input_value() == "likes"
             )
@@ -389,9 +441,7 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             another.get_by_label("横軸の目盛り間隔の値", exact=True).fill("5")
             another.get_by_label("縦軸の目盛り間隔", exact=True).select_option("manual")
             another.get_by_label("縦軸の目盛り間隔の値", exact=True).fill("10")
-            another.wait_for_function(
-                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
-            )
+            save_changes(another, in_settings=True)
             another.set_viewport_size({"width": 375, "height": 812})
             another.keyboard.press("Escape")
             another.reload()
@@ -422,6 +472,48 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             assert another.evaluate(
                 "document.documentElement.scrollWidth <= innerWidth"
             )
+            another.get_by_role(
+                "button", name="表・グラフを追加", exact=True
+            ).click()
+            assert another.locator("[data-panel-type]").count() == 7
+            another.locator("[data-panel-type]").filter(has_text="円").click()
+            assert another.locator("#settings").evaluate("el => el.open")
+            assert "円" in another.locator("#settings-type-badge").inner_text()
+            another.keyboard.press("Escape")
+            remove_pie = another.get_by_role(
+                "button", name="キャラクター別の反応構成を削除", exact=True
+            ).last
+            remove_pie.wait_for()
+            another.once("dialog", lambda dialog: dialog.accept())
+            remove_pie.click()
+            save_changes(another)
+            with another.expect_response(
+                lambda response: (
+                    response.url.endswith("/lock")
+                    and response.request.method == "PATCH"
+                    and response.status == 200
+                )
+            ):
+                another.locator("#toggle-lock").click()
+            another.wait_for_selector("#view-lock-state:not([hidden])")
+            assert another.get_by_role(
+                "button", name="ビューを削除", exact=True
+            ).is_disabled()
+            another.reload()
+            another.wait_for_selector("#view-lock-state:not([hidden])")
+            assert not another.get_by_label("ビュー名", exact=True).is_editable()
+            with another.expect_response(
+                lambda response: (
+                    response.url.endswith("/lock")
+                    and response.request.method == "PATCH"
+                    and response.status == 200
+                )
+            ):
+                another.locator("#toggle-lock").click()
+            another.wait_for_function(
+                "document.querySelector('#view-lock-state').hidden"
+            )
+            assert another.get_by_label("ビュー名", exact=True).is_editable()
             assert not errors
             browser.close()
     finally:

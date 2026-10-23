@@ -70,6 +70,7 @@ def test_view_crud_uses_selected_profile_and_preserves_revision_checks(client):
         "/api/analytics/views", json={"name": "A用"}, headers=a
     ).json()
     view_id = created["id"]
+    assert created["locked"] is False
     assert client.get("/api/analytics/views", headers=b).json()["views"] == []
     payload = {"name": "更新", "config": created["config"], "revision": 1}
     assert (
@@ -95,6 +96,40 @@ def test_view_crud_uses_selected_profile_and_preserves_revision_checks(client):
     )
     # Deliberately no authentication: another browser may select A as well.
     other = TestClient(app)
+    lock_url = f"/api/analytics/views/{view_id}/lock"
+    locked = other.patch(
+        lock_url, json={"locked": True, "revision": 2}, headers=a
+    )
+    assert locked.status_code == 200
+    assert locked.json()["locked"] is True
+    assert locked.json()["revision"] == 3
+    assert (
+        other.patch(
+            f"/api/analytics/views/{view_id}",
+            json={"name": "ロック中", "config": created["config"], "revision": 3},
+            headers=a,
+        ).status_code
+        == 409
+    )
+    assert other.delete(f"/api/analytics/views/{view_id}", headers=a).status_code == 409
+    assert (
+        other.patch(
+            lock_url, json={"locked": False, "revision": 2}, headers=a
+        ).status_code
+        == 409
+    )
+    assert (
+        other.patch(
+            lock_url, json={"locked": False, "revision": 3}, headers=b
+        ).status_code
+        == 404
+    )
+    unlocked = other.patch(
+        lock_url, json={"locked": False, "revision": 3}, headers=a
+    )
+    assert unlocked.status_code == 200
+    assert unlocked.json()["locked"] is False
+    assert unlocked.json()["revision"] == 4
     assert (
         other.get("/api/analytics/views", headers=a).json()["views"][0]["name"]
         == "更新"

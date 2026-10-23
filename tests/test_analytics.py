@@ -145,6 +145,22 @@ def test_box_histogram_and_filters(dataset):
     assert filtered["points"][0]["y"] == 200
 
 
+def test_bar_chart_aggregates_categories_and_hides_raw_samples(dataset):
+    bar = query(Panel(chart="bar", x="character", y=["likes"], aggregate="sum"))
+    assert {p["x"]: p["y"] for p in bar["points"]} == {"A": 300, "B": 100}
+    assert all("samples" not in p for p in bar["points"])
+    ranked = query(
+        Panel(
+            chart="bar",
+            x="character",
+            y=["likes"],
+            aggregate="sum",
+            style={"sort": "y_desc"},
+        )
+    )
+    assert [p["x"] for p in ranked["points"]] == ["A", "B"]
+
+
 def test_followers_are_independent_and_source_fields_are_checked(dataset):
     app_db.add_account_metric(100, "2026-10-01T15:00:00+00:00")
     app_db.add_account_metric(120, "2026-10-02T15:00:00+00:00")
@@ -236,8 +252,43 @@ def test_views_are_private_and_revision_conflicts_preserve_changes(dataset):
     app_db.update_analysis_view("user_a", view["id"], "Updated", {"version": 1}, 1)
     with pytest.raises(app_db.ViewConflict):
         app_db.update_analysis_view("user_a", view["id"], "Stale", {}, 1)
+    locked = app_db.set_analysis_view_locked("user_a", view["id"], True, 2)
+    assert locked["locked"] is True
+    assert locked["revision"] == 3
+    assert app_db.list_analysis_views("user_a")[0]["locked"] is True
+    with pytest.raises(app_db.ViewLocked):
+        app_db.update_analysis_view("user_a", view["id"], "Locked", {}, 3)
+    with pytest.raises(app_db.ViewLocked):
+        app_db.delete_analysis_view("user_a", view["id"])
+    with pytest.raises(app_db.ViewConflict):
+        app_db.set_analysis_view_locked("user_a", view["id"], False, 2)
+    unlocked = app_db.set_analysis_view_locked("user_a", view["id"], False, 3)
+    assert unlocked["locked"] is False
+    assert unlocked["revision"] == 4
+    app_db.update_analysis_view("user_a", view["id"], "Updated", {"version": 1}, 4)
     assert app_db.list_analysis_views("user_a")[0]["name"] == "Updated"
     assert not app_db.delete_analysis_view("user_b", view["id"])
+
+
+def test_legacy_analytics_views_gain_a_lock_column(tmp_path):
+    db = tmp_path / "legacy-views.db"
+    with sqlite3.connect(db) as connection:
+        connection.execute(
+            "CREATE TABLE analytics_views ("
+            "id TEXT PRIMARY KEY, owner TEXT NOT NULL, name TEXT NOT NULL, "
+            "config TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, "
+            "updated_at TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO analytics_views VALUES "
+            "('view_old', 'user_a', '以前のビュー', '{\"version\": 1}', 1, "
+            "'2026-10-01T00:00:00+00:00')"
+        )
+    app_db.init_db(str(db))
+    app_db.init_db(str(db))
+    view = app_db.list_analysis_views("user_a", str(db))[0]
+    assert view["locked"] is False
+    assert view["name"] == "以前のビュー"
 
 
 def test_table_photos_are_ordered_and_present_without_the_selected_stage(

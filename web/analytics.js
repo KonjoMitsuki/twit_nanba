@@ -11,6 +11,8 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     close: '<path d="m6 6 12 12M6 18 18 6"/>',
     lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/>',
+    unlock:
+      '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7-2.6m-3 9.6v2"/>',
     refresh: '<path d="M20 11a8 8 0 1 0-2 7M20 4v7h-7"/>',
     copy: '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>',
     trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
@@ -25,6 +27,7 @@
     box: '<path d="M3 12h18M5 8v8m14-8v8M8 7h8v10H8Zm4 0v10"/>',
     histogram:
       '<path d="M3 21h18M5 21V12h4v9m0 0V5h4v16m0 0V9h4v12m0 0V15h4v6"/>',
+    bar: '<path d="M3 21h18"/><rect x="4" y="11" width="3" height="7" rx=".5"/><rect x="10.5" y="4" width="3" height="14" rx=".5"/><rect x="17" y="8" width="3" height="10" rx=".5"/>',
     settings:
       '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2" fill="white"/><circle cx="16" cy="12" r="2" fill="white"/><circle cx="10" cy="18" r="2" fill="white"/>',
     up: '<path d="m6 14 6-6 6 6"/>',
@@ -32,6 +35,8 @@
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',
     check: '<path d="m5 12 4 4L20 5"/>',
     data: '<path d="M4 6c0-1.66 3.58-3 8-3s8 1.34 8 3v12c0 1.66-3.58 3-8 3s-8-1.34-8-3V6Z"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3M4 6c0 1.66 3.58 3 8 3s8-1.34 8-3"/>',
+    users:
+      '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
     sort: '<path d="m3 16 4 4 4-4M7 20V4m14 4-4-4-4 4m4-4v16"/>',
     filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
     formula: '<path d="M7 4h10M7 20h10M6 8l4 4-4 4m6-4h6m-6 4h6"/>',
@@ -56,8 +61,10 @@
     generation: 0,
     dirty: new Set(),
     saving: new Set(),
-    timers: new Map(),
+    savingAll: false,
     recovery: [],
+    history: [],
+    historyGroup: { key: null, at: 0 },
     characterRow: null,
     characterSelection: [],
     newCharacters: [],
@@ -65,6 +72,7 @@
   const chartNames = {
     table: "テーブル（一覧表）",
     line: "折れ線グラフ（推移）",
+    bar: "棒グラフ（比較）",
     pie: "円グラフ（構成比）",
     scatter: "散布図（相関）",
     box: "箱ひげ図（分布）",
@@ -83,6 +91,55 @@
     max: "最大値 (max)",
     count: "件数・作品数 (count)",
   };
+  const sourceCards = {
+    artworks: {
+      name: "作品を比較",
+      row: "1作品 = 1行",
+      use: "選んだ時点の成績を横並びで比べます",
+      example: "例: 24時間後いいねランキング",
+      period: "投稿日が基準",
+      icon: "table",
+    },
+    snapshots: {
+      name: "投稿後の伸びを追う",
+      row: "1計測 = 1行",
+      use: "5分後から48時間後までの変化を見ます",
+      example: "例: キャラクター別の成長曲線",
+      period: "投稿日が基準",
+      icon: "line",
+    },
+    followers: {
+      name: "フォロワーの推移",
+      row: "アカウント全体で1行",
+      use: "作品とは別にフォロワー数の増減を見ます",
+      example: "例: 日ごとのフォロワー増",
+      period: "計測日が基準",
+      icon: "users",
+    },
+  };
+  const chartCards = {
+    table: {
+      name: "テーブル",
+      use: "作品を一覧で確認",
+      icon: "table",
+    },
+    line: { name: "折れ線", use: "時系列の推移", icon: "line" },
+    bar: { name: "棒", use: "項目を比較", icon: "bar" },
+    pie: { name: "円", use: "構成比を見る", icon: "pie" },
+    scatter: { name: "散布図", use: "2項目の相関", icon: "scatter" },
+    box: { name: "箱ひげ図", use: "分布を比較", icon: "box" },
+    histogram: {
+      name: "ヒストグラム",
+      use: "度数分布を見る",
+      icon: "histogram",
+    },
+  };
+  function stageLabel(name) {
+    const match = /^(\d+)([mh])$/.exec(String(name || ""));
+    if (!match) return name || "";
+    const [, amount, unit] = match;
+    return unit === "m" ? `${amount}分後` : `${amount}時間後`;
+  }
   const id = (prefix) =>
     `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
   const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -218,6 +275,190 @@
       },
     ];
   }
+  function panelTypeTemplates() {
+    return [
+      {
+        name: "テーブル",
+        icon: "table",
+        description: "作品を一覧で確認し、表示列を選ぶ",
+        defaults: { chart: "table", title: "作品テーブル" },
+      },
+      {
+        name: "折れ線",
+        icon: "line",
+        description: "投稿後の伸びを時系列で見る",
+        defaults: {
+          chart: "line",
+          title: "投稿後のいいね推移",
+          source: "snapshots",
+          x: "elapsed_hours",
+          y: ["likes"],
+          series: "character",
+          aggregate: "mean",
+        },
+      },
+      {
+        name: "棒グラフ",
+        icon: "bar",
+        description: "カテゴリごとの値を横並びで比べる",
+        defaults: {
+          chart: "bar",
+          title: "キャラクター別のいいね",
+          x: "character",
+          y: ["likes"],
+          aggregate: "mean",
+        },
+      },
+      {
+        name: "円",
+        icon: "pie",
+        description: "キャラクター別などの構成比を見る",
+        defaults: {
+          chart: "pie",
+          title: "キャラクター別の反応構成",
+          x: "character",
+          y: ["likes"],
+          aggregate: "sum",
+        },
+      },
+      {
+        name: "散布図",
+        icon: "scatter",
+        description: "2つの数値項目の関係を見る",
+        defaults: {
+          chart: "scatter",
+          title: "いいねとインプレッション",
+          x: "impressions",
+          y: ["likes"],
+          series: "character",
+        },
+      },
+      {
+        name: "箱ひげ図",
+        icon: "box",
+        description: "グループごとのばらつきを見る",
+        defaults: {
+          chart: "box",
+          title: "キャラクター別の成績分布",
+          x: "character",
+          y: ["likes"],
+        },
+      },
+      {
+        name: "ヒストグラム",
+        icon: "histogram",
+        description: "数値の出現頻度を見る",
+        defaults: {
+          chart: "histogram",
+          title: "24hいいねの分布",
+          x: "likes",
+          y: ["likes"],
+          bins: 12,
+        },
+      },
+    ];
+  }
+  function applySource(panel, source) {
+    panel.source = source;
+    panel.x =
+      source === "followers"
+        ? "date"
+        : source === "snapshots"
+          ? "elapsed_hours"
+          : "character";
+    panel.y = [source === "followers" ? "followers" : "likes"];
+    panel.series = source === "snapshots" ? "character" : "";
+    panel.filters = [];
+    panel.formulas = [];
+    panel.columns =
+      source === "followers"
+        ? ["date", "measured_at", "followers"]
+        : [
+            "title",
+            "date",
+            "character",
+            "likes",
+            "retweets",
+            "impressions",
+          ];
+    panel.table_sort = "date";
+    panel.table_sorts = null;
+    panel.table_group = "";
+    panel.table_collapsed_groups = [];
+    if (panel.chart === "scatter") {
+      const validX = state.metadata.sources[source].some(
+        (field) =>
+          field.key === panel.x && ["number", "date"].includes(field.type),
+      );
+      if (!validX)
+        panel.x =
+          source === "artworks"
+            ? "impressions"
+            : source === "snapshots"
+              ? "elapsed_hours"
+              : "date";
+    }
+    if (panel.chart === "histogram") panel.x = panel.y[0];
+    if (panel.chart === "pie") panel.y = panel.y.slice(0, 1);
+  }
+  function confirmSourceChange(panel) {
+    return (
+      !(panel.filters?.length || panel.formulas?.length) ||
+      confirm(
+        "データの種類を変えると、絞り込みと計算式がリセットされます。変更しますか？",
+      )
+    );
+  }
+  function applyChart(panel, chart) {
+    panel.chart = chart;
+    panel.transform = "none";
+    if (["pie", "table", "scatter"].includes(chart))
+      panel.compare_previous = false;
+    if (chart === "pie") panel.y = panel.y.slice(0, 1);
+    if (chart === "scatter") {
+      const validX =
+        state.metadata.sources[panel.source].some(
+          (field) =>
+            field.key === panel.x && ["number", "date"].includes(field.type),
+        ) ||
+        panel.formulas.some(
+          (formula) => formula.key === panel.x && formula.scope === "row",
+        );
+      if (!validX)
+        panel.x =
+          panel.source === "artworks"
+            ? "impressions"
+            : panel.source === "snapshots"
+              ? "elapsed_hours"
+              : "date";
+      const numericRows = fieldOptions(panel, {
+        numeric: true,
+        rowOnly: true,
+      });
+      panel.y = panel.y.filter((key) => key in numericRows);
+      if (!panel.y.length)
+        panel.y = [panel.source === "followers" ? "followers" : "likes"];
+      if (panel.allocation === "split") panel.allocation = "full";
+    }
+    if (chart === "histogram") {
+      if (!panel.y.length)
+        panel.y = [panel.source === "followers" ? "followers" : "likes"];
+      panel.x = panel.y[0];
+      panel.series = "";
+    }
+    if (chart === "bar") {
+      const numericX = state.metadata.sources[panel.source].some(
+        (field) => field.key === panel.x && field.type === "number",
+      );
+      if (numericX)
+        panel.x =
+          panel.source === "snapshots"
+            ? "elapsed_hours"
+            : panel.source === "followers"
+              ? "date"
+              : "character";
+    }
+  }
   async function api(path, options = {}) {
     const response = await fetch(path, {
       ...options,
@@ -258,9 +499,170 @@
   function saveStatus(message, error = false) {
     $("#save-status").textContent = message;
     $("#save-status").toggleAttribute("data-error", error);
+    const settingsState = $("#settings-save-state");
+    if (settingsState) {
+      settingsState.textContent =
+        message === "未保存"
+          ? "未保存のビューがあります（「保存」で確定）"
+          : message === "保存済み"
+            ? "すべてのビューは保存済みです"
+            : message;
+      settingsState.toggleAttribute("data-error", error);
+    }
+  }
+  function updateSaveButtons() {
+    const disabled =
+      !state.view || !state.dirty.size || state.savingAll || state.saving.size > 0;
+    ["#save-view", "#save-settings"].forEach((selector) => {
+      const button = $(selector);
+      if (button) button.disabled = disabled;
+    });
+  }
+  function updateSaveState() {
+    if (!state.view) {
+      saveStatus("");
+      updateSaveButtons();
+      return;
+    }
+    const saving = state.savingAll || state.saving.size > 0;
+    const dirty = state.dirty.size > 0;
+    saveStatus(saving ? "保存中…" : dirty ? "未保存" : "保存済み");
+    updateSaveButtons();
   }
   function currentPanel() {
     return state.view?.config.panels[state.panel];
+  }
+  function rememberChange(key = "") {
+    if (!state.view) return;
+    const now = Date.now();
+    const last = state.history.at(-1);
+    if (
+      last &&
+      last.viewId === state.view.id &&
+      key &&
+      key === state.historyGroup.key &&
+      now - state.historyGroup.at < 1200
+    ) {
+      state.historyGroup.at = now;
+      updateUndoButton();
+      return;
+    }
+    state.history.push({
+      viewId: state.view.id,
+      name: state.view.name,
+      config: clone(state.view.config),
+    });
+    if (state.history.length > 20) state.history.shift();
+    state.historyGroup = { key, at: now };
+    updateUndoButton();
+  }
+  function updateUndoButton() {
+    const button = $("#undo-settings");
+    if (!button) return;
+    button.disabled = !state.history.some(
+      (entry) => entry.viewId === state.view?.id,
+    );
+  }
+  function undoChange() {
+    let entry;
+    while ((entry = state.history.pop())) {
+      if (entry.viewId === state.view?.id) break;
+    }
+    if (!entry || entry.viewId !== state.view?.id) {
+      updateUndoButton();
+      return;
+    }
+    state.view.name = entry.name;
+    state.view.config = entry.config;
+    state.panel = Math.min(state.panel, state.view.config.panels.length - 1);
+    state.historyGroup = { key: null, at: 0 };
+    changed({ render: false });
+    renderWorkspace();
+    if ($("#settings").open) renderSettings();
+    updateUndoButton();
+    toast("変更を元に戻しました");
+  }
+  function fieldLabel(panel, key) {
+    return (
+      state.metadata?.sources?.[panel.source]?.find(
+        (field) => field.key === key,
+      )?.label || key
+    );
+  }
+  function periodLabel(panel) {
+    if (panel.from_date || panel.to_date)
+      return `${panel.from_date || "指定なし"}〜${panel.to_date || "指定なし"}`;
+    if (panel.period_days) return `直近${panel.period_days}日`;
+    return "全期間";
+  }
+  function describePanel(panel) {
+    const parts = [periodLabel(panel)];
+    parts.push(sourceCards[panel.source]?.name || sourceNames[panel.source]);
+    if (panel.source === "artworks") parts.push(`${stageLabel(panel.stage)}時点`);
+    else if (panel.source === "snapshots") parts.push("全ステージ");
+    else parts.push("アカウント全体");
+    if (panel.chart === "table") {
+      parts.push(`表示列 ${panel.columns?.length || 0}項目`);
+      if (panel.table_group)
+        parts.push(`グループ: ${fieldLabel(panel, panel.table_group)}`);
+      const sorts = AnalysisTable.sortsFor(panel);
+      if (sorts.length)
+        parts.push(
+          `${sorts[0].desc ? "降順" : "昇順"}: ${fieldLabel(panel, sorts[0].field)}`,
+        );
+    } else {
+      parts.push(`横軸: ${fieldLabel(panel, panel.x)}`);
+      parts.push(
+        `縦軸: ${(panel.y || []).map((key) => fieldLabel(panel, key)).join(" / ") || "未選択"}`,
+      );
+      if (panel.series)
+        parts.push(`色分け: ${fieldLabel(panel, panel.series)}`);
+      if (
+        !["box", "histogram", "scatter"].includes(panel.chart) &&
+        panel.aggregate
+      )
+        parts.push(
+          (aggregates[panel.aggregate] || panel.aggregate).split(" (")[0],
+        );
+      if (panel.transform && panel.transform !== "none") {
+        parts.push(
+          {
+            delta: "増加数",
+            rate: "増加率",
+            moving_average: "移動平均",
+          }[panel.transform] || panel.transform,
+        );
+      }
+    }
+    parts.push(chartNames[panel.chart]?.split("（")[0] || panel.chart);
+    const filterCount = (panel.filters || []).reduce(
+      (total, group) => total + group.rules.length,
+      0,
+    );
+    if (filterCount) parts.push(`絞り込み ${filterCount}件`);
+    if (panel.formulas?.length) parts.push(`計算式 ${panel.formulas.length}件`);
+    return parts.join(" · ");
+  }
+  function targetLabel(panel) {
+    const data = state.results.get(panel.id)?.data;
+    if (!data) return "対象を集計中…";
+    const unit = panel.source === "followers" ? "計測" : "作品";
+    const parts = [`対象 ${fmt(data.artwork_count)}${unit}`];
+    if (data.missing_stage_count)
+      parts.push(`未計測 ${fmt(data.missing_stage_count)}作品`);
+    if (data.excluded_count) parts.push(`除外 ${fmt(data.excluded_count)}件`);
+    if (panel.chart !== "table" && data.points?.length)
+      parts.push(`${fmt(data.points.length)}点`);
+    return parts.join(" · ");
+  }
+  function updateSettingsHeader(panel = currentPanel()) {
+    if (!panel || !state.view) return;
+    const context = $("#settings-context");
+    if (context)
+      context.innerHTML = `<span>${esc(state.view.name)}</span><span aria-hidden="true">/</span><strong>${esc(panel.title)}</strong>`;
+    const summary = $("#settings-summary");
+    if (summary)
+      summary.innerHTML = `<p class="settings-summary-line">${esc(describePanel(panel))}</p><p class="settings-summary-target">${esc(targetLabel(panel))}</p>`;
   }
   function saveDrafts() {
     if (!state.user) return;
@@ -272,27 +674,59 @@
   function changed({ render = true } = {}) {
     if (!state.view) return;
     setError("");
+    const settingsError = $("#settings-error");
+    if (settingsError) {
+      settingsError.hidden = true;
+      settingsError.textContent = "";
+    }
     state.dirty.add(state.view.id);
     saveDrafts();
-    saveStatus("保存待ち…");
-    clearTimeout(state.timers.get(state.view.id));
-    const view = state.view;
-    state.timers.set(
-      view.id,
-      setTimeout(() => saveView(view), 650),
-    );
+    updateSaveState();
+    renderViewList();
     if (render) renderPanels();
+  }
+  function saveChanges() {
+    if (
+      !state.view ||
+      !state.dirty.size ||
+      state.savingAll ||
+      state.saving.size
+    ) {
+      updateSaveState();
+      return;
+    }
+    const views = state.views.filter(
+      (view) => state.dirty.has(view.id) && !state.saving.has(view.id),
+    );
+    state.savingAll = true;
+    updateSaveState();
+    (async () => {
+      try {
+        for (const view of views) await saveView(view);
+      } finally {
+        state.savingAll = false;
+        updateSaveState();
+      }
+    })();
   }
   async function saveView(view) {
     if (!view) return;
     if (state.saving.has(view.id) || !state.dirty.has(view.id)) return;
     if (!view.name.trim()) {
       saveStatus("ビュー名を入力してください", true);
+      $("#view-name").focus();
       return;
     }
+    const snapshot = {
+      name: view.name,
+      config: clone(view.config),
+      revision: view.revision,
+    };
+    const snapshotJson = JSON.stringify(snapshot.config);
+    let saveError = null;
+    let errorMessage = "";
     state.saving.add(view.id);
-    state.dirty.delete(view.id);
-    saveStatus("保存中…");
+    updateSaveState();
     try {
       if (DEMO) {
         store(storageKey("views"), state.views);
@@ -302,40 +736,98 @@
           `/api/analytics/views/${encodeURIComponent(view.id)}`,
           {
             method: "PATCH",
-            body: JSON.stringify({
-              name: view.name,
-              config: clone(view.config),
-              revision: view.revision,
-            }),
+            body: JSON.stringify(snapshot),
           },
         );
         view.revision = saved.revision;
         view.updated_at = saved.updated_at;
       }
-      saveDrafts();
-      if (!state.dirty.size) saveStatus("すべて保存済み");
-      renderViewList();
+      if (
+        view.name === snapshot.name &&
+        JSON.stringify(view.config) === snapshotJson
+      )
+        state.dirty.delete(view.id);
+      setError("");
+      const settingsError = $("#settings-error");
+      if (settingsError) {
+        settingsError.hidden = true;
+        settingsError.textContent = "";
+      }
     } catch (error) {
       if (error.status === 409) {
         state.recovery = state.recovery.filter((v) => v.id !== view.id);
         state.recovery.push(clone(view));
+        state.dirty.delete(view.id);
         openConflict();
-      } else state.dirty.add(view.id);
-      saveDrafts();
-      saveStatus("未保存 · 更新で再試行", true);
-      setError(error.message);
-      if ($("#settings").open) {
-        $("#settings-error").hidden = false;
-        $("#settings-error").textContent = error.message;
+        saveError = "保存できませんでした · 競合を解決してください";
+      } else {
+        state.dirty.add(view.id);
+        saveError = "未保存 · 保存を再試行してください";
       }
+      errorMessage = error.message;
     } finally {
       state.saving.delete(view.id);
+      saveDrafts();
+      updateSaveState();
+      renderViewList();
     }
-    if (state.dirty.has(view.id) && !$("#page-error").textContent)
-      state.timers.set(
-        view.id,
-        setTimeout(() => saveView(view), 650),
-      );
+    if (saveError) {
+      saveStatus(saveError, true);
+      setError(errorMessage);
+      if ($("#settings").open) {
+        $("#settings-error").hidden = false;
+        $("#settings-error").textContent = errorMessage;
+      }
+    }
+  }
+  async function toggleViewLock() {
+    const view = state.view;
+    if (!view) return;
+    if (state.savingAll || state.saving.size) {
+      toast("設定を保存中です。完了後にロックを変更してください");
+      return;
+    }
+    const locked = !view.locked;
+    if (
+      locked &&
+      (state.dirty.has(view.id) ||
+        state.recovery.some((draft) => draft.id === view.id))
+    ) {
+      toast("未保存の変更があります。保存・復元してからロックしてください");
+      return;
+    }
+    const button = $("#toggle-lock");
+    if (button) button.disabled = true;
+    try {
+      if (DEMO) {
+        view.locked = locked;
+        view.revision++;
+        store(storageKey("views"), state.views);
+      } else {
+        const saved = await api(
+          `/api/analytics/views/${encodeURIComponent(view.id)}/lock`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ locked, revision: view.revision }),
+          },
+        );
+        Object.assign(view, saved);
+      }
+      if (locked) {
+        state.history = [];
+        state.historyGroup = { key: null, at: 0 };
+        updateUndoButton();
+        if ($("#settings").open) $("#settings").close();
+      }
+      renderViewList();
+      renderWorkspace();
+      updateSaveState();
+      toast(locked ? "ビューをロックしました" : "ビューのロックを解除しました");
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      if ($("#toggle-lock")) $("#toggle-lock").disabled = false;
+    }
   }
   function openConflict() {
     if (state.recovery.length) {
@@ -370,7 +862,7 @@
       $("#conflict-dialog").close();
       if ($("#settings").open) $("#settings").close();
       selectView(created?.id || latest?.id || state.views[0]?.id);
-      saveStatus("すべて保存済み");
+      updateSaveState();
       openConflict();
     } catch (error) {
       $("#conflict-error").textContent = error.message;
@@ -385,9 +877,18 @@
       $("#account").innerHTML =
         `<label><span class="sr-only">デモ利用者</span><select id="demo-user"><option value="demo_a">デモユーザー A</option><option value="demo_b">デモユーザー B</option></select></label>`;
       $("#demo-user").value = state.user.id;
-      $("#demo-user").onchange = async (event) => {
-        await saveView(state.view);
-        store("xart_demo_user", event.target.value);
+      $("#demo-user").onchange = (event) => {
+        const selected = event.target.value;
+        event.target.value = state.user.id;
+        if (state.savingAll || state.saving.size) {
+          toast("保存が完了してから切り替えてください");
+          return;
+        }
+        if (state.dirty.size || state.recovery.length) {
+          toast("未保存の変更があります。保存してから切り替えてください");
+          return;
+        }
+        store("xart_demo_user", selected);
         location.reload();
       };
       return;
@@ -398,17 +899,15 @@
     $("#profile-user").onchange = async (event) => {
       const selected = event.target.value;
       event.target.value = state.user.id;
-      if (state.saving.size) {
+      if (state.savingAll || state.saving.size) {
         toast("保存が完了してから切り替えてください");
         return;
       }
+      if (state.dirty.size || state.recovery.length) {
+        toast("未保存の変更があります。保存してから切り替えてください");
+        return;
+      }
       try {
-        for (const view of state.views)
-          if (state.dirty.has(view.id)) await saveView(view);
-        if (state.dirty.size || state.recovery.length) {
-          toast("未保存の変更を保存・復元してから切り替えてください");
-          return;
-        }
         let profileId = selected;
         if (selected === "__new__") {
           const name = prompt("利用者の名前を入力してください");
@@ -445,12 +944,21 @@
       }
     };
   }
+  function normalizeView(view) {
+    if (view) view.locked = Boolean(view.locked);
+    return view;
+  }
   function renderViewList() {
     $("#view-list").innerHTML = state.views
-      .map(
-        (view) =>
-          `<button data-view="${esc(view.id)}" ${state.view?.id === view.id ? 'aria-current="page"' : ""}>${icon(view.config.layout === "dashboard" ? "dashboard" : view.config.panels[0]?.chart)}<span>${esc(view.name)}</span></button>`,
-      )
+      .map((view) => {
+        const locked = view.locked
+            ? `<span class="view-lock-mark" title="ロック中" aria-hidden="true">${icon("lock")}</span><span class="sr-only">ロック中</span>`
+            : "",
+          dirty = state.dirty.has(view.id)
+            ? '<span class="view-dirty" aria-hidden="true"></span><span class="sr-only">未保存</span>'
+            : "";
+        return `<button data-view="${esc(view.id)}" ${state.view?.id === view.id ? 'aria-current="page"' : ""} ${state.dirty.has(view.id) ? 'title="未保存の変更があります"' : ""}>${icon(view.config.layout === "dashboard" ? "dashboard" : view.config.panels[0]?.chart)}<span>${esc(view.name)}</span>${locked}${dirty}</button>`;
+      })
       .join("");
     $("#view-list")
       .querySelectorAll("[data-view]")
@@ -462,9 +970,13 @@
     state.view = state.views.find((v) => v.id === viewId) || state.views[0];
     state.panel = 0;
     state.generation++;
+    state.history = [];
+    state.historyGroup = { key: null, at: 0 };
+    updateUndoButton();
     setError("");
     store(storageKey("active"), state.view?.id);
     renderWorkspace();
+    updateSaveState();
   }
   function renderWorkspace() {
     const has = !!state.view;
@@ -472,12 +984,32 @@
     $("#empty-views").hidden = has;
     renderViewList();
     if (!has) return;
+    const locked = Boolean(state.view.locked);
     $("#view-name").value = state.view.name;
+    $("#view-name").readOnly = locked;
     $("#layout").value = state.view.config.layout;
+    $("#layout").disabled = locked;
     $("#layout-label").textContent =
       state.view.config.layout === "dashboard"
         ? "ダッシュボード"
         : "単独ビュー";
+    $("#view-lock-state").hidden = !locked;
+    const lockButton = $("#toggle-lock");
+    lockButton.innerHTML = icon(locked ? "unlock" : "lock");
+    lockButton.classList.toggle("is-locked", locked);
+    lockButton.setAttribute("aria-pressed", String(locked));
+    lockButton.setAttribute(
+      "aria-label",
+      locked ? "ビューのロックを解除" : "ビューをロック",
+    );
+    lockButton.title = locked ? "ビューのロックを解除" : "ビューをロック";
+    $("#add-panel").disabled = locked;
+    $("#add-panel").title = locked
+      ? "ロック中は表・グラフを追加できません"
+      : "";
+    $("#delete-view").disabled = locked;
+    $("#delete-view").title = locked ? "ロック中はビューを削除できません" : "";
+    $("#analysis-content").classList.toggle("view-locked", locked);
     renderPanels();
   }
   async function createView(index) {
@@ -489,6 +1021,7 @@
         name: template.name,
         config: template.config,
         revision: 1,
+        locked: false,
       };
       state.views.push(view);
       store(storageKey("views"), state.views);
@@ -501,7 +1034,7 @@
     }
     $("#create-dialog").close();
     selectView(view.id);
-    saveStatus("すべて保存済み");
+    updateSaveState();
   }
   function renderTemplates() {
     ["#starter-templates", "#create-templates"].forEach((selector) => {
@@ -521,6 +1054,39 @@
               )),
         );
     });
+  }
+  function renderPanelTypes() {
+    const host = $("#panel-types");
+    if (!host) return;
+    host.innerHTML = panelTypeTemplates()
+      .map(
+        (template, index) =>
+          `<button class="template-button panel-type-button" type="button" data-panel-type="${index}">${icon(template.icon)}<strong>${esc(template.name)}</strong><small>${esc(template.description)}</small></button>`,
+      )
+      .join("");
+    host.querySelectorAll("[data-panel-type]").forEach(
+      (button) =>
+        (button.onclick = () => addPanelFromType(Number(button.dataset.panelType))),
+    );
+  }
+  function addPanelFromType(index) {
+    if (!state.view) return;
+    if (state.view.locked) {
+      toast("ロック中のビューはパネルを追加できません");
+      return;
+    }
+    if (state.view.config.panels.length >= 12) {
+      toast("1ビューには12パネルまで追加できます");
+      return;
+    }
+    const template = panelTypeTemplates()[index];
+    if (!template) return;
+    rememberChange("panels");
+    state.view.config.panels.push(panelDefaults(template.defaults));
+    state.panel = state.view.config.panels.length - 1;
+    $("#panel-type-dialog").close();
+    changed();
+    openSettings(state.panel);
   }
   function renderTabs() {
     const panels = state.view.config.panels,
@@ -542,9 +1108,72 @@
           }),
       );
   }
+  function panelFilterCount(panel) {
+    return (panel.filters || []).reduce(
+      (total, group) => total + group.rules.length,
+      0,
+    );
+  }
+  function panelMetaText(panel) {
+    const parts = [sourceNames[panel.source]];
+    if (panel.source === "artworks") parts.push(`${stageLabel(panel.stage)}時点`);
+    if (panel.source === "snapshots") parts.push("全ステージ");
+    parts.push(
+      ["table", "scatter"].includes(panel.chart)
+        ? "元データ"
+        : ["box", "histogram"].includes(panel.chart)
+          ? "分布"
+          : (aggregates[panel.aggregate] || panel.aggregate || "").split(" (")[0],
+    );
+    parts.push(periodLabel(panel));
+    return parts.join(" · ");
+  }
+  function panelMetaChips(panel) {
+    const chips = [];
+    const filters = panelFilterCount(panel);
+    if (filters) chips.push(`絞り込み ${filters}`);
+    if (panel.formulas?.length) chips.push(`計算 ${panel.formulas.length}`);
+    if (panel.table_group)
+      chips.push(`グループ: ${fieldLabel(panel, panel.table_group)}`);
+    if (panel.series && panel.chart !== "table")
+      chips.push(`色分け: ${fieldLabel(panel, panel.series)}`);
+    return chips
+      .map((chip) => `<span class="panel-chip">${esc(chip)}</span>`)
+      .join("");
+  }
+  function panelFootnote(panel, data) {
+    return `対象 ${fmt(data.artwork_count)}${panel.source === "followers" ? "計測" : "作品"} · 未計測 ${fmt(data.missing_stage_count)}作品 · 除外 ${fmt(data.excluded_count)}件${data.warnings.length ? " / " + data.warnings.join(" ") : ""}`;
+  }
+  function emptyPanelHtml(panel) {
+    const message =
+      panel.source === "artworks"
+        ? "条件に合う作品がありません。期間を広げるか、ステージ・絞り込みを見直してください。"
+        : panel.source === "snapshots"
+          ? "条件に合う計測ログがありません。期間を広げるか、ステージの絞り込みを見直してください。"
+          : "この期間のフォロワー計測がありません。期間を広げてください。";
+    const filters = panelFilterCount(panel);
+    const hasPeriod = panel.period_days || panel.from_date || panel.to_date;
+    const locked = Boolean(state.view?.locked);
+    return `<div class="panel-empty">
+      <span class="panel-empty-icon">${icon(panel.chart)}</span>
+      <strong>条件に合うデータがありません</strong>
+      <p>${esc(message)}</p>
+      ${
+        locked
+          ? '<p class="panel-empty-locked">ロック中のため設定は変更できません</p>'
+          : `<div class="panel-empty-actions">
+        <button class="quiet-button" type="button" data-empty-settings>設定を見直す</button>
+        ${hasPeriod ? '<button class="quiet-button" type="button" data-empty-period>全期間にする</button>' : ""}
+        ${filters ? '<button class="quiet-button" type="button" data-empty-filters>絞り込みを解除</button>' : ""}
+      </div>`
+      }
+      <small>${panel.source === "artworks" ? `現在のステージ: ${esc(stageLabel(panel.stage))}` : esc(sourceNames[panel.source])}</small>
+    </div>`;
+  }
   function renderPanels() {
     if (!state.view) return;
-    const generation = ++state.generation;
+    const generation = ++state.generation,
+      locked = Boolean(state.view.locked);
     renderTabs();
     $("#panels").classList.toggle(
       "single",
@@ -558,7 +1187,7 @@
     $("#panels").innerHTML = visible
       .map(
         (panel) =>
-          `<article class="panel ${panel.chart === "table" ? "is-table" : ""}" data-panel="${esc(panel.id)}"><div class="panel-head"><div class="panel-title">${icon(panel.chart)}<h2>${esc(panel.title)}</h2></div><div class="panel-controls"><button class="icon-button" data-move="-1" aria-label="このパネルを前へ">${icon("up")}</button><button class="icon-button" data-move="1" aria-label="このパネルを後ろへ">${icon("down")}</button><button class="icon-button" data-settings aria-label="${esc(panel.title)}の設定">${icon("settings")}</button><button class="icon-button" data-remove aria-label="${esc(panel.title)}を削除">${icon("close")}</button></div></div><div class="panel-meta">${esc(sourceNames[panel.source])} · ${panel.source === "artworks" ? esc(panel.stage) + "時点 · " : ""}${["table", "scatter"].includes(panel.chart) ? "元データ" : ["box", "histogram"].includes(panel.chart) ? "分布" : esc(aggregates[panel.aggregate])} · ${panel.period_days ? "直近" + panel.period_days + "日" : panel.from_date || panel.to_date ? "指定期間" : "全期間"}</div><div class="chart-container"><div class="loading">集計中…</div></div><div class="panel-footnote"></div></article>`,
+          `<article class="panel ${panel.chart === "table" ? "is-table" : ""} ${locked ? "is-locked" : ""}" data-panel="${esc(panel.id)}"><div class="panel-head"><div class="panel-title">${icon(panel.chart)}<h2 title="${esc(panel.title)}">${esc(panel.title)}</h2></div><div class="panel-controls"><button class="icon-button" data-move="-1" title="前へ移動" aria-label="このパネルを前へ">${icon("up")}</button><button class="icon-button" data-move="1" title="後ろへ移動" aria-label="このパネルを後ろへ">${icon("down")}</button><button class="icon-button panel-settings-button" data-settings title="表示・絞り込み・見た目を設定" aria-label="${esc(panel.title)}の設定">${icon("settings")}<span class="panel-action-label">設定</span></button><button class="icon-button danger" data-remove title="このパネルを削除" aria-label="${esc(panel.title)}を削除">${icon("close")}</button></div></div><div class="panel-meta"><span>${esc(panelMetaText(panel))}</span><span class="panel-chips">${panelMetaChips(panel)}</span></div><div class="chart-container"><div class="loading">集計中…</div></div><div class="panel-footnote"></div></article>`,
       )
       .join("");
     $("#panels")
@@ -568,31 +1197,49 @@
             (panel) => panel.id === article.dataset.panel,
           ),
           panel = all[index];
-        article.querySelector("[data-settings]").onclick = () =>
+        article.querySelector("[data-settings]").onclick = () => {
+          if (state.view.locked) {
+            toast("ロック中のビューは設定を変更できません");
+            return;
+          }
           openSettings(index);
+        };
         article.querySelectorAll("[data-move]").forEach(
           (button) =>
             (button.onclick = () => {
+              if (state.view.locked) {
+                toast("ロック中のビューは並べ替えできません");
+                return;
+              }
               const next = index + Number(button.dataset.move);
               if (next < 0 || next >= all.length) return;
+              rememberChange("panels");
               [all[index], all[next]] = [all[next], all[index]];
               state.panel = next;
               changed();
             }),
         );
-        article.querySelector('[data-move="-1"]').disabled = index === 0;
+        article.querySelector("[data-settings]").disabled = locked;
+        article.querySelector('[data-move="-1"]').disabled =
+          locked || index === 0;
         article.querySelector('[data-move="1"]').disabled =
-          index === all.length - 1;
+          locked || index === all.length - 1;
         article.querySelector("[data-remove]").onclick = () => {
+          if (state.view.locked) {
+            toast("ロック中のビューはパネルを削除できません");
+            return;
+          }
           if (all.length === 1) {
             toast("ビューには1つ以上の表・グラフが必要です");
             return;
           }
           if (!confirm("このパネルを削除しますか？")) return;
+          rememberChange("panels");
           all.splice(index, 1);
           state.panel = Math.min(state.panel, all.length - 1);
           changed();
         };
+        article.querySelector("[data-remove]").disabled = locked;
         loadPanel(article, panel, generation);
       });
   }
@@ -611,24 +1258,57 @@
       );
       if (generation !== state.generation || !article.isConnected) return;
       state.results.set(panel.id, { panel: clone(panel), data });
-      if (panel.chart === "table")
-        renderTable(article.querySelector(".chart-container"), panel, data);
-      else
-        AnalysisCharts.render(
-          article.querySelector(".chart-container"),
-          panel,
-          data,
+      const host = article.querySelector(".chart-container");
+      const hasData =
+        panel.chart === "table"
+          ? (data.rows?.length || 0) > 0
+          : (data.points?.length || 0) > 0;
+      if (!hasData) {
+        host.innerHTML = emptyPanelHtml(panel);
+        host.querySelector("[data-empty-settings]")?.addEventListener(
+          "click",
+          () => openSettings(state.view.config.panels.indexOf(panel)),
         );
-      article.querySelector(".panel-footnote").textContent =
-        `対象 ${fmt(data.artwork_count)}${panel.source === "followers" ? "計測" : "作品"} · 未計測 ${fmt(data.missing_stage_count)}作品 · 除外 ${fmt(data.excluded_count)}件${data.warnings.length ? " / " + data.warnings.join(" ") : ""}`;
+        host.querySelector("[data-empty-period]")?.addEventListener(
+          "click",
+          () => {
+            rememberChange("period");
+            panel.period_days = 0;
+            panel.from_date = "";
+            panel.to_date = "";
+            changed();
+            if ($("#settings").open) renderSettings();
+          },
+        );
+        host.querySelector("[data-empty-filters]")?.addEventListener(
+          "click",
+          () => {
+            rememberChange("filters");
+            panel.filters = [];
+            changed();
+            if ($("#settings").open) renderSettings();
+          },
+        );
+      } else if (panel.chart === "table")
+        renderTable(host, panel, data);
+      else AnalysisCharts.render(host, panel, data);
+      article.querySelector(".panel-footnote").textContent = panelFootnote(
+        panel,
+        data,
+      );
+      if ($("#settings").open && currentPanel()?.id === panel.id)
+        updateSettingsHeader(panel);
       if (article === document.querySelector("[data-panel]"))
         renderInsights(data, panel);
     } catch (error) {
       if (generation !== state.generation || !article.isConnected) return;
-      article.querySelector(".chart-container").innerHTML =
-        `<div class="panel-error">${esc(error.message)}<button class="quiet-button">設定を変更する</button></div>`;
-      article.querySelector(".panel-error button").onclick = () =>
-        openSettings(state.view.config.panels.indexOf(panel));
+      article.querySelector(".chart-container").innerHTML = state.view.locked
+        ? `<div class="panel-error">${esc(error.message)}<span>ロック中のため設定は変更できません</span></div>`
+        : `<div class="panel-error">${esc(error.message)}<button class="quiet-button">設定を変更する</button></div>`;
+      const settingsButton = article.querySelector(".panel-error button");
+      if (settingsButton)
+        settingsButton.onclick = () =>
+          openSettings(state.view.config.panels.indexOf(panel));
     }
   }
   function renderInsights(data, panel) {
@@ -662,6 +1342,7 @@
       .join("");
   }
   function renderTable(host, panel, data, page = 0) {
+    const locked = Boolean(state.view?.locked);
     const kinds = Object.fromEntries(
       state.metadata.sources[panel.source].map((field) => [
         field.key,
@@ -716,7 +1397,7 @@
           if (key === "image") return '<th scope="col">投稿写真</th>';
           const rank = sorts.findIndex((sort) => sort.field === key),
             sort = sorts[rank];
-          return `<th aria-sort="${rank === 0 ? (sort.desc ? "descending" : "ascending") : "none"}"><button data-sort="${esc(key)}">${esc(data.fields[key] || key)} ${sort ? (sort.desc ? "↓" : "↑") + (sorts.length > 1 ? String(rank + 1) : "") : ""}</button></th>`;
+          return `<th aria-sort="${rank === 0 ? (sort.desc ? "descending" : "ascending") : "none"}"><button data-sort="${esc(key)}" ${locked ? 'disabled title="ロック中は並べ替えを変更できません"' : ""}>${esc(data.fields[key] || key)} ${sort ? (sort.desc ? "↓" : "↑") + (sorts.length > 1 ? String(rank + 1) : "") : ""}</button></th>`;
         })
         .join("")}</tr></thead><tbody>${items
         .slice(rowPage * 50, (rowPage + 1) * 50)
@@ -746,6 +1427,7 @@
       `<div class="table-pagination"><span>${grouped ? `${fmt(groups.length)}グループ・元データ${fmt(rows.length)}行` : `${rows.length ? `${page * 50 + 1}〜${Math.min((page + 1) * 50, rows.length)} / ` : ""}${fmt(rows.length)}行`}</span><div><button class="quiet-button" data-page="-1" ${page === 0 ? "disabled" : ""}>前へ</button><span>${page + 1} / ${totalPages}</span><button class="quiet-button" data-page="1" ${page + 1 >= totalPages ? "disabled" : ""}>次へ</button></div></div>`;
     host.querySelectorAll(".table-group").forEach((details) => {
       details.ontoggle = () => {
+        if (state.view.locked) return;
         const keys = new Set(panel.table_collapsed_groups || []),
           key = details.dataset.groupKey;
         if (keys.has(key) === !details.open) return;
@@ -781,6 +1463,7 @@
     host.querySelectorAll("[data-sort]").forEach(
       (button) =>
         (button.onclick = () => {
+          if (state.view.locked) return;
           const field = button.dataset.sort;
           const existing = sorts.find((sort) => sort.field === field);
           const next = {
@@ -816,9 +1499,17 @@
       );
   }
   function openSettings(index) {
+    if (state.view?.locked) {
+      toast("ロック中のビューは設定を変更できません");
+      return;
+    }
     state.panel = index;
     state.tab = "data";
     renderSettings();
+    const panel = currentPanel();
+    updateSettingsHeader(panel);
+    updateSaveState();
+    updateUndoButton();
     $("#settings").showModal();
   }
   const sectionTitle = (title, help = "") =>
@@ -846,6 +1537,169 @@
       .forEach((f) => (options[f.key] = f.label));
     return options;
   }
+  function sourceCardsHtml(panel) {
+    return `<fieldset class="choice-cards source-cards"><legend class="sr-only">何を分析する？</legend>${Object.entries(
+      sourceCards,
+    )
+      .map(
+        ([key, item]) => `<label class="source-card ${panel.source === key ? "is-selected" : ""}">
+          <input type="radio" name="panel-source" value="${esc(key)}" data-source-card ${panel.source === key ? "checked" : ""}>
+          ${panel.source === key ? `<span class="choice-check" aria-hidden="true">${icon("check")}</span>` : ""}
+          <span class="choice-icon">${icon(item.icon)}</span>
+          <span class="choice-body">
+            <strong>${esc(item.name)}</strong>
+            <span class="choice-row">${esc(item.row)}</span>
+            <span class="choice-use">${esc(item.use)}</span>
+            <span class="choice-example">${esc(item.example)}</span>
+            <span class="choice-period">${esc(item.period)}</span>
+          </span>
+        </label>`,
+      )
+      .join("")}</fieldset>`;
+  }
+  function chartCardsHtml(panel) {
+    return `<fieldset class="choice-cards chart-cards"><legend class="sr-only">どう見せる？</legend>${Object.entries(
+      chartCards,
+    )
+      .map(
+        ([key, item]) => `<label class="chart-card ${panel.chart === key ? "is-selected" : ""}">
+          <input type="radio" name="panel-chart" value="${esc(key)}" data-chart-card ${panel.chart === key ? "checked" : ""}>
+          ${panel.chart === key ? `<span class="choice-check" aria-hidden="true">${icon("check")}</span>` : ""}
+          <span class="choice-icon">${icon(item.icon)}</span>
+          <span class="choice-body"><strong>${esc(item.name)}</strong><span class="choice-use">${esc(item.use)}</span></span>
+        </label>`,
+      )
+      .join("")}</fieldset>`;
+  }
+  function organizeSettingsHtml(p) {
+    const fields = fieldOptions(p, { rowOnly: true });
+    p.table_sorts = AnalysisTable.sortsFor(p).map((sort) => ({ ...sort }));
+    let html = sectionTitle(
+      "行のグループ化",
+      "指定した項目ごとに表をグループ化して表示します",
+    );
+    html += labelField(
+      "グループ化する項目",
+      select("table_group", p.table_group || "", {
+        "": "グループ化しない（フラット表示）",
+        ...fields,
+      }),
+      "キャラクターや日付などで表をカテゴリごとに折りたためるようにします。",
+    );
+    if (p.table_group) {
+      html += labelField(
+        "グループの表示順",
+        select("table_group_order", p.table_group_order || "asc", {
+          asc: "昇順（A→Z / 小さい順）",
+          desc: "降順（Z→A / 大きい順）",
+        }),
+      );
+      const kind = state.metadata.sources[p.source].find(
+        (field) => field.key === p.table_group,
+      )?.type;
+      if (kind === "date")
+        html += labelField(
+          "日付のまとめ方",
+          select("table_group_dates", p.table_group_dates || "day", {
+            day: "日ごと（日単位・JST）",
+            week: "週ごと（月曜開始・JST）",
+            month: "月ごと（月単位・JST）",
+            year: "年ごと（年単位・JST）",
+            exact: "完全一致（同一日時）",
+          }),
+        );
+      if (["character", "tags"].includes(p.table_group))
+        html += labelField(
+          "複数の値がある行",
+          select(
+            "table_group_multivalue",
+            p.table_group_multivalue || "individual",
+            {
+              individual: "それぞれのグループに重複表示",
+              combination: "組み合わせでひとまとめ",
+            },
+          ),
+          "複数グループへの表示では同じ作品がそれぞれのグループに表示されます。元データは変更されません。",
+        );
+      html +=
+        '<p class="settings-help">グループ見出しをタップして開閉できます。行数・合計はグループごとに自動集計され、折りたたみ状態も保存されます。</p>';
+    }
+    html += sectionTitle("並べ替え条件", "優先度の高い条件から順に並べ替えます");
+    html +=
+      '<span class="field-label" style="display:none;">並べ替え（上の条件から優先）</span>';
+    html += p.table_sorts
+      .map((sort, index) => {
+        const choices = Object.fromEntries(
+          Object.entries(fields).filter(
+            ([field]) =>
+              field === sort.field ||
+              !p.table_sorts.some((other) => other.field === field),
+          ),
+        );
+        return `<div class="table-sort-rule"><div class="table-sort-heading"><span class="sort-priority-badge">優先度 ${index + 1}</span><div class="sort-controls"><button class="icon-button" data-sort-move="${index},-1" aria-label="並べ替え条件${index + 1}を上へ" ${index === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-button" data-sort-move="${index},1" aria-label="並べ替え条件${index + 1}を下へ" ${index === p.table_sorts.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-button danger" data-sort-remove="${index}" aria-label="並べ替え条件${index + 1}を削除">${icon("close")}</button></div></div>${labelField(`並べ替え項目 ${index + 1}`, select(`table_sorts.${index}.field`, sort.field, choices))}<label class="toggle-label"><input type="checkbox" data-field="table_sorts.${index}.desc" ${sort.desc ? "checked" : ""}><span class="toggle-switch"></span>降順（条件${index + 1}）</label></div>`;
+      })
+      .join("");
+    html += `<button class="quiet-button add-btn" id="add-table-sort" ${p.table_sorts.length >= Math.min(5, Object.keys(fields).length) ? "disabled" : ""}>${icon("plus")}並べ替え条件を追加</button><p class="settings-help">最大5条件まで指定できます。未設定・未計測は昇順・降順とも最後に表示されます。</p>`;
+    return html;
+  }
+  function formulaSettingsHtml(p) {
+    let html = sectionTitle(
+      "カスタム指標",
+      "独自の計算式で新しい数値指標を作成します",
+    );
+    html +=
+      '<p class="settings-help">列名・四則演算・条件式と組み込み関数を使えます。ゼロ除算や欠測を含む結果は未計測として安全に処理されます。</p>';
+    html += p.formulas
+      .map(
+        (f, i) =>
+          `<div class="formula-card">
+            <div class="formula-card-head">
+              <span class="formula-badge">指標 ${i + 1}</span>
+              <span class="formula-key">列キー: <code>${esc(f.key)}</code></span>
+              <button class="icon-button danger" data-remove-formula="${i}" aria-label="この指標を削除">${icon("close")}</button>
+            </div>
+            ${labelField("指標の名前", input(`formulas.${i}.label`, f.label, "text", 'placeholder="例: 反応率（%）"'))}
+            ${labelField(
+              "計算のタイミング",
+              select(`formulas.${i}.scope`, f.scope, {
+                row: "行ごと（1行ずつ計算してから集計）",
+                group: "集計後（グループ集計値に対して計算）",
+              }),
+              "「行ごと」は各投稿で計算します。「集計後」は合計いいね/合計impなどの全体比率計算に適しています。",
+            )}
+            ${labelField(
+              "計算式",
+              `<textarea data-field="formulas.${i}.expression" aria-label="計算式" maxlength="500" spellcheck="false" placeholder="例: likes / impressions * 100">${esc(f.expression)}</textarea>`,
+            )}
+            <div class="formula-insert-row">
+              <label class="field-label" style="margin-bottom:0;">式に列を挿入</label>
+              <select data-insert-formula="${i}" aria-label="式に列を挿入">
+                <option value="">列を選択して式に追記…</option>
+                ${Object.entries(fieldOptions(p, { numeric: true }))
+                  .filter(([key]) => key !== f.key)
+                  .map(([key, label]) => `<option value="${esc(key)}">${esc(label)} (${esc(key)})</option>`)
+                  .join("")}
+              </select>
+            </div>
+          </div>`,
+      )
+      .join("");
+    html +=
+      '<button class="quiet-button add-btn" id="add-formula">' +
+      icon("plus") +
+      '計算指標を追加</button>' +
+      sectionTitle(
+        "よく使う計算式テンプレート",
+        "ワンクリックで便利な計算指標を追加できます",
+      ) +
+      '<div class="formula-examples">' +
+      '<button type="button" class="formula-preset-card" data-example="rate"><strong>反応率（%）</strong><code>likes / impressions * 100</code><small>各投稿のインプレッションに対するいいねの割合</small></button>' +
+      '<button type="button" class="formula-preset-card" data-example="aggregate"><strong>合計から反応率</strong><code>sum(likes) / sum(impressions) * 100</code><small>集計全体の合計いいね／合計インプレッション割合</small></button>' +
+      '<button type="button" class="formula-preset-card" data-example="speed"><strong>時間あたりいいね</strong><code>likes / elapsed_hours</code><small>投稿からの経過時間（h）で割った反応ペース</small></button>' +
+      "</div>" +
+      '<p class="settings-help">利用可能関数: <code>sum</code>, <code>mean</code>, <code>median</code>, <code>min</code>, <code>max</code>, <code>count</code>, <code>abs</code>, <code>round</code>, <code>sqrt</code>, <code>log</code>, <code>coalesce</code><br>条件分岐例: <code>likes / impressions * 100 if impressions &gt; 0 else 0</code></p>';
+    return html;
+  }
   function renderSettings() {
     const p = currentPanel();
     if (!p) return;
@@ -854,9 +1708,8 @@
     if (badge) {
       badge.innerHTML = `${icon(p.chart)}<span>${esc((chartNames[p.chart] || p.chart).split("（")[0])}</span>`;
     }
+    updateSettingsHeader(p);
     $("#settings-error").hidden = true;
-    document.querySelector('[data-tab="organize"]').hidden =
-      p.chart !== "table";
     document
       .querySelectorAll("[data-tab]")
       .forEach((button) =>
@@ -868,50 +1721,62 @@
     let html = "";
     if (state.tab === "data") {
       html =
-        sectionTitle("基本情報", "パネルの表示名とグラフの形式を設定します") +
-        labelField(
-          "パネル名",
-          input("title", p.title, "text", 'maxlength="120" placeholder="パネル名を入力"'),
+        sectionTitle(
+          "何を分析する？",
+          "同じ「いいね」でも、データの種類によって1行の意味が変わります。",
         ) +
-        labelField("表示形式", select("chart", p.chart, chartNames)) +
-        sectionTitle("データソース", "集計対象のデータ種別と計測タイミング") +
-        labelField(
-          "データの種類",
-          select("source", p.source, sourceNames),
-          "作品ごとの確定値、時系列の推移ログ、またはフォロワー履歴から選択します。",
-        );
-      if (p.source === "artworks")
-        html += labelField(
-          "比較する計測時点",
-          select(
-            "stage",
-            p.stage,
-            Object.fromEntries(
-              state.metadata.stages.map((s) => [s.name, s.name]),
-            ),
-          ),
-          "指定した経過時間（ステージ）の計測データがある作品を集計します（未計測は除外）。",
-        );
-      html +=
-        sectionTitle("集計期間", "対象とする投稿日または計測日の範囲") +
+        sourceCardsHtml(p) +
+        (p.source === "artworks"
+          ? labelField(
+              "投稿からどの時点？",
+              select(
+                "stage",
+                p.stage,
+                Object.fromEntries(
+                  state.metadata.stages.map((s) => [
+                    s.name,
+                    stageLabel(s.name),
+                  ]),
+                ),
+              ),
+              "選んだ時点の計測がある作品だけを集計します。未計測は0ではなく除外されます。",
+            )
+          : `<p class="settings-help source-note">${
+              p.source === "snapshots"
+                ? "すべての計測ステージを対象にします。特定の時点だけ見る場合は「絞り込み」でステージを指定してください。"
+                : "アカウント全体のフォロワー計測を対象にします。作品ごとの反応とは分けて表示されます。"
+            }</p>`) +
+        sectionTitle(
+          "いつのデータ？",
+          "作品データと計測ログは投稿日、フォロワーは計測日が基準です。",
+        ) +
         labelField(
           "直近の日数（0＝全期間）",
           input("period_days", p.period_days, "number", 'min="0" max="3660"') +
-          `<div class="period-pills">
-            <button type="button" class="pill-btn" data-preset-days="0">全期間</button>
-            <button type="button" class="pill-btn" data-preset-days="7">直近7日</button>
-            <button type="button" class="pill-btn" data-preset-days="30">直近30日</button>
-            <button type="button" class="pill-btn" data-preset-days="90">直近90日</button>
-            <button type="button" class="pill-btn" data-preset-days="365">直近1年</button>
-          </div>`,
-          "直近の指定日数でデータを絞り込みます（0で全期間）。ワンクリックで期間を選択できます。",
+            `<div class="period-pills">
+              <button type="button" class="pill-btn" data-preset-days="0">全期間</button>
+              <button type="button" class="pill-btn" data-preset-days="7">直近7日</button>
+              <button type="button" class="pill-btn" data-preset-days="30">直近30日</button>
+              <button type="button" class="pill-btn" data-preset-days="90">直近90日</button>
+              <button type="button" class="pill-btn" data-preset-days="365">直近1年</button>
+            </div>`,
+          "直近の指定日数でデータを絞り込みます（0で全期間）。",
         ) +
         `<div class="field-grid">${labelField("開始日", input("from_date", p.from_date, "date"))}${labelField("終了日", input("to_date", p.to_date, "date"))}</div>` +
-        `<p class="settings-help">※ 開始日・終了日を指定した場合、上記の日数指定よりも日付範囲が優先されます。</p>`;
-      if (!["table", "pie", "scatter"].includes(p.chart))
-        html +=
-          sectionTitle("比較オプション", "過去の同期間データとの比較") +
-          `<label class="toggle-label"><input type="checkbox" data-field="compare_previous" ${p.compare_previous ? "checked" : ""}><span class="toggle-switch"></span>前の同じ長さの期間と比較</label><p class="settings-help">直前の同じ長さの期間データを薄い線で重ねて前期間と比較します。</p>`;
+        `<p class="settings-help">開始日・終了日を指定した場合、日数指定より日付範囲が優先されます。</p>` +
+        sectionTitle(
+          "どう見せる？",
+          "表示形式を選ぶと、「表示」タブで軸や集計を設定できます。",
+        ) +
+        chartCardsHtml(p) +
+        (!["table", "pie", "scatter"].includes(p.chart)
+          ? `<label class="toggle-label"><input type="checkbox" data-field="compare_previous" ${p.compare_previous ? "checked" : ""}><span class="toggle-switch"></span>前の同じ長さの期間と比較</label><p class="settings-help">直前の同じ長さの期間データを薄い線で重ねて比較します。</p>`
+          : "") +
+        sectionTitle("パネルの名前", "一覧やタブに表示される名前です") +
+        labelField(
+          "パネル名",
+          input("title", p.title, "text", 'maxlength="120" placeholder="パネル名を入力"'),
+        );
     } else if (state.tab === "axes") {
       const all = fieldOptions(p, { rowOnly: true }),
         numbers = fieldOptions(p, { numeric: true });
@@ -940,6 +1805,7 @@
             sectionTitle("表示オプション", "表の見た目と写真の表示") +
             `<label class="toggle-label"><input type="checkbox" data-field="show_images" ${p.show_images !== false ? "checked" : ""}><span class="toggle-switch"></span>投稿写真を表示</label><p class="settings-help">投稿画像のサムネイルを表示します。タップすると作品詳細を開きます。</p>`;
         }
+        html += organizeSettingsHtml(p);
       } else {
         html = sectionTitle("軸の設定", "グラフの横軸・縦軸の項目を設定します");
         if (p.chart !== "histogram") {
@@ -1008,6 +1874,12 @@
             "複数データが存在する場合の計算方法です。",
           );
         }
+        if (p.aggregate === "sum" && p.source === "snapshots")
+          html +=
+            '<p class="settings-warning">計測ログの「合計」は同じ作品を複数回足すため、通常は使えません。平均値か中央値を使ってください。</p>';
+        if (p.aggregate === "sum" && p.source === "followers")
+          html +=
+            '<p class="settings-warning">フォロワー数はその時点の人数です。合計せず、折れ線か増加数で確認してください。</p>';
         if (p.chart === "histogram") {
           html += labelField(
             "ビン数",
@@ -1066,71 +1938,6 @@
           "均等配分では件数や合計値をキャラ数で分割し、平均・中央値には同じ重みを使用します。",
         );
       }
-    } else if (state.tab === "organize") {
-      const fields = fieldOptions(p, { rowOnly: true });
-      p.table_sorts = AnalysisTable.sortsFor(p).map((sort) => ({ ...sort }));
-      html = sectionTitle("行のグループ化", "指定した項目ごとに表をグループ化して表示します");
-      html += labelField(
-        "グループ化する項目",
-        select("table_group", p.table_group || "", {
-          "": "グループ化しない（フラット表示）",
-          ...fields,
-        }),
-        "キャラクターや日付などで表をカテゴリごとに折りたためるようにします。",
-      );
-      if (p.table_group) {
-        html += labelField(
-          "グループの表示順",
-          select("table_group_order", p.table_group_order || "asc", {
-            asc: "昇順（A→Z / 小さい順）",
-            desc: "降順（Z→A / 大きい順）",
-          }),
-        );
-        const kind = state.metadata.sources[p.source].find(
-          (field) => field.key === p.table_group,
-        )?.type;
-        if (kind === "date")
-          html += labelField(
-            "日付のまとめ方",
-            select("table_group_dates", p.table_group_dates || "day", {
-              day: "日ごと（日単位・JST）",
-              week: "週ごと（月曜開始・JST）",
-              month: "月ごと（月単位・JST）",
-              year: "年ごと（年単位・JST）",
-              exact: "完全一致（同一日時）",
-            }),
-          );
-        if (["character", "tags"].includes(p.table_group))
-          html += labelField(
-            "複数の値がある行",
-            select(
-              "table_group_multivalue",
-              p.table_group_multivalue || "individual",
-              {
-                individual: "それぞれのグループに重複表示",
-                combination: "組み合わせでひとまとめ",
-              },
-            ),
-            "複数グループへの表示では同じ作品がそれぞれのグループに表示されます。元データは変更されません。",
-          );
-        html +=
-          '<p class="settings-help">グループ見出しをタップして開閉できます。行数・合計はグループごとに自動集計され、折りたたみ状態も保存されます。</p>';
-      }
-      html += sectionTitle("並べ替え条件", "優先度の高い条件から順に並べ替えます");
-      html += '<span class="field-label" style="display:none;">並べ替え（上の条件から優先）</span>';
-      html += p.table_sorts
-        .map((sort, index) => {
-          const choices = Object.fromEntries(
-            Object.entries(fields).filter(
-              ([field]) =>
-                field === sort.field ||
-                !p.table_sorts.some((other) => other.field === field),
-            ),
-          );
-          return `<div class="table-sort-rule"><div class="table-sort-heading"><span class="sort-priority-badge">優先度 ${index + 1}</span><div class="sort-controls"><button class="icon-button" data-sort-move="${index},-1" aria-label="並べ替え条件${index + 1}を上へ" ${index === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-button" data-sort-move="${index},1" aria-label="並べ替え条件${index + 1}を下へ" ${index === p.table_sorts.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-button danger" data-sort-remove="${index}" aria-label="並べ替え条件${index + 1}を削除">${icon("close")}</button></div></div>${labelField(`並べ替え項目 ${index + 1}`, select(`table_sorts.${index}.field`, sort.field, choices))}<label class="toggle-label"><input type="checkbox" data-field="table_sorts.${index}.desc" ${sort.desc ? "checked" : ""}><span class="toggle-switch"></span>降順（条件${index + 1}）</label></div>`;
-        })
-        .join("");
-      html += `<button class="quiet-button add-btn" id="add-table-sort" ${p.table_sorts.length >= Math.min(5, Object.keys(fields).length) ? "disabled" : ""}>${icon("plus")}並べ替え条件を追加</button><p class="settings-help">最大5条件まで指定できます。未設定・未計測は昇順・降順とも最後に表示されます。</p>`;
     } else if (state.tab === "filters") {
       html = sectionTitle("条件の結合ルール", "複数グループがある場合の結合ルールを設定します");
       html += labelField(
@@ -1185,67 +1992,18 @@
         '<button class="quiet-button add-btn" id="add-filter-group">' +
         icon("plus") +
         "条件グループを追加</button>";
-    } else if (state.tab === "formulas") {
-      html = sectionTitle("カスタム指標", "独自の計算式で新しい数値指標を作成します");
-      html +=
-        '<p class="settings-help">列名・四則演算・条件式と組み込み関数を使えます。ゼロ除算や欠測を含む結果は未計測として安全に処理されます。</p>';
-      html += p.formulas
-        .map(
-          (f, i) =>
-            `<div class="formula-card">
-              <div class="formula-card-head">
-                <span class="formula-badge">指標 ${i + 1}</span>
-                <span class="formula-key">列キー: <code>${esc(f.key)}</code></span>
-                <button class="icon-button danger" data-remove-formula="${i}" aria-label="この指標を削除">${icon("close")}</button>
-              </div>
-              ${labelField("指標の名前", input(`formulas.${i}.label`, f.label, "text", 'placeholder="例: 反応率（%）"'))}
-              ${labelField(
-                "計算のタイミング",
-                select(`formulas.${i}.scope`, f.scope, {
-                  row: "行ごと（1行ずつ計算してから集計）",
-                  group: "集計後（グループ集計値に対して計算）",
-                }),
-                "「行ごと」は各投稿で計算します。「集計後」は合計いいね/合計impなどの全体比率計算に適しています。",
-              )}
-              ${labelField(
-                "計算式",
-                `<textarea data-field="formulas.${i}.expression" aria-label="計算式" maxlength="500" spellcheck="false" placeholder="例: likes / impressions * 100">${esc(f.expression)}</textarea>`,
-              )}
-              <div class="formula-insert-row">
-                <label class="field-label" style="margin-bottom:0;">式に列を挿入</label>
-                <select data-insert-formula="${i}" aria-label="式に列を挿入">
-                  <option value="">列を選択して式に追記…</option>
-                  ${Object.entries(fieldOptions(p, { numeric: true }))
-                    .filter(([key]) => key !== f.key)
-                    .map(([key, label]) => `<option value="${esc(key)}">${esc(label)} (${esc(key)})</option>`)
-                    .join("")}
-                </select>
-              </div>
-            </div>`,
-        )
-        .join("");
-      html +=
-        '<button class="quiet-button add-btn" id="add-formula">' +
-        icon("plus") +
-        '計算指標を追加</button>' +
-        sectionTitle("よく使う計算式テンプレート", "ワンクリックで便利な計算指標を追加できます") +
-        '<div class="formula-examples">' +
-          '<button type="button" class="formula-preset-card" data-example="rate"><strong>反応率（%）</strong><code>likes / impressions * 100</code><small>各投稿のインプレッションに対するいいねの割合</small></button>' +
-          '<button type="button" class="formula-preset-card" data-example="aggregate"><strong>合計から反応率</strong><code>sum(likes) / sum(impressions) * 100</code><small>集計全体の合計いいね／合計インプレッション割合</small></button>' +
-          '<button type="button" class="formula-preset-card" data-example="speed"><strong>時間あたりいいね</strong><code>likes / elapsed_hours</code><small>投稿からの経過時間（h）で割った反応ペース</small></button>' +
-        '</div>' +
-        '<p class="settings-help">利用可能関数: <code>sum</code>, <code>mean</code>, <code>median</code>, <code>min</code>, <code>max</code>, <code>count</code>, <code>abs</code>, <code>round</code>, <code>sqrt</code>, <code>log</code>, <code>coalesce</code><br>条件分岐例: <code>likes / impressions * 100 if impressions &gt; 0 else 0</code></p>';
+    } else if (state.tab === "advanced") {
+      html = formulaSettingsHtml(p);
     } else if (p.chart === "table") {
       html =
-        sectionTitle("テーブルの表示設定", "テーブルの表示に関する設定") +
-        (p.source !== "followers"
-          ? `<label class="toggle-label"><input type="checkbox" data-field="show_images" ${p.show_images !== false ? "checked" : ""}><span class="toggle-switch"></span>投稿写真を表示</label><p class="settings-help">表の左端に投稿写真サムネイルを表示します。タップすると作品詳細を開きます。</p>`
-          : "") +
-        sectionTitle("関連する設定タブへのショートカット", "テーブルの詳細設定はこちらから行えます") +
+        sectionTitle(
+          "テーブルの詳細設定",
+          "列・グループ・絞り込み・計算式は各タブで設定します",
+        ) +
         '<div class="style-shortcuts">' +
-          '<button type="button" class="style-shortcut-card" data-switch-tab="axes"><span class="shortcut-icon">' + icon("chart") + '</span><div><strong>表示列の選択</strong><small>表示するデータ項目の追加・削除</small></div></button>' +
-          '<button type="button" class="style-shortcut-card" data-switch-tab="organize"><span class="shortcut-icon">' + icon("sort") + '</span><div><strong>グループ・並べ替え</strong><small>行のまとめ方と複数条件ソート</small></div></button>' +
+          '<button type="button" class="style-shortcut-card" data-switch-tab="axes"><span class="shortcut-icon">' + icon("table") + '</span><div><strong>表示列とグループ</strong><small>列の選択・グループ化・並べ替え</small></div></button>' +
           '<button type="button" class="style-shortcut-card" data-switch-tab="filters"><span class="shortcut-icon">' + icon("filter") + '</span><div><strong>絞り込みフィルター</strong><small>特定キャラや期間の絞り込み</small></div></button>' +
+          '<button type="button" class="style-shortcut-card" data-switch-tab="advanced"><span class="shortcut-icon">' + icon("formula") + '</span><div><strong>カスタム計算式</strong><small>反応率などの独自指標</small></div></button>' +
         '</div>';
     } else {
       const palette = ["#447869", "#20221e", "#f2785d", "#3b82f6", "#8b5cf6", "#eab308", "#ec4899"];
@@ -1259,7 +2017,9 @@
         labelField("横軸ラベル", input("style.x_label", p.style.x_label, "text", 'placeholder="自動（未設定）"')) +
         labelField("縦軸ラベル", input("style.y_label", p.style.y_label, "text", 'placeholder="自動（未設定）"')) +
         sectionTitle("軸の範囲（スケール）", "数値軸の表示範囲を固定する場合に指定します") +
-        `<div class="field-grid">${labelField("横軸の最小値", input("style.x_min", p.style.x_min, "number", 'step="any" placeholder="自動"'))}${labelField("横軸の最大値", input("style.x_max", p.style.x_max, "number", 'step="any" placeholder="自動"'))}</div><p class="settings-help">横軸範囲は数値軸に適用されます。日付はデータの期間で絞り込めます。</p>` +
+        (p.chart === "bar"
+          ? '<p class="settings-help">棒グラフの横軸は分類軸のため、横軸の範囲固定は使用できません。カテゴリは「表示順」で並べ替えられます。</p>'
+          : `<div class="field-grid">${labelField("横軸の最小値", input("style.x_min", p.style.x_min, "number", 'step="any" placeholder="自動"'))}${labelField("横軸の最大値", input("style.x_max", p.style.x_max, "number", 'step="any" placeholder="自動"'))}</div><p class="settings-help">横軸範囲は数値軸に適用されます。日付はデータの期間で絞り込めます。</p>`) +
         `<div class="field-grid">${labelField("縦軸の最小値", input("style.y_min", p.style.y_min, "number", 'step="any" placeholder="自動"'))}${labelField("縦軸の最大値", input("style.y_max", p.style.y_max, "number", 'step="any" placeholder="自動"'))}</div><p class="settings-help">空欄の場合はデータの最小値・最大値に合わせて自動調整されます。</p>` +
         sectionTitle("表示オプション", "グラフ要素の表示切り替えと並び順") +
         labelField(
@@ -1272,14 +2032,14 @@
           }),
         ) +
         `<label class="toggle-label"><input type="checkbox" data-field="style.legend" ${p.style.legend ? "checked" : ""}><span class="toggle-switch"></span>凡例を表示</label>` +
-        `<label class="toggle-label"><input type="checkbox" data-field="style.labels" ${p.style.labels ? "checked" : ""}><span class="toggle-switch"></span>数値ラベルを表示（折れ線）</label>`;
+        `<label class="toggle-label"><input type="checkbox" data-field="style.labels" ${p.style.labels ? "checked" : ""}><span class="toggle-switch"></span>数値ラベルを表示（折れ線・棒）</label>`;
     }
     if (state.tab === "style" && !["table", "pie"].includes(p.chart)) {
       const temporal = state.metadata.sources[p.source].some(
           (f) => f.key === p.x && f.type === "date",
         ),
         categorical =
-          p.chart === "box" ||
+          ["box", "bar"].includes(p.chart) ||
           state.metadata.sources[p.source].some(
             (f) => f.key === p.x && !["number", "date"].includes(f.type),
           );
@@ -1333,10 +2093,13 @@
         }
       });
     wireSettings();
+    updateUndoButton();
   }
   let previewTimer;
   function settingsChanged(rerender = false) {
     changed({ render: false });
+    updateSettingsHeader();
+    updateUndoButton();
     clearTimeout(previewTimer);
     previewTimer = setTimeout(renderPanels, 550);
     if (rerender) renderSettings();
@@ -1347,6 +2110,7 @@
       .querySelectorAll("[data-tick-mode]")
       .forEach((el) => {
         el.onchange = () => {
+          rememberChange("style.tick");
           p.style[`${el.dataset.tickMode}_tick_interval`] =
             el.value === "auto" ? null : 1;
           settingsChanged(true);
@@ -1356,6 +2120,7 @@
       .querySelectorAll("[data-field]")
       .forEach((el) => {
         const handler = () => {
+          rememberChange(el.dataset.field);
           const path = el.dataset.field.split(".");
           let target = p;
           path.slice(0, -1).forEach((part) => (target = target[part]));
@@ -1380,53 +2145,11 @@
           target[property] = value;
           let structural = false;
           if (el.dataset.field === "source") {
-            p.x = p.source === "followers" ? "date" : "character";
-            p.y = [p.source === "followers" ? "followers" : "likes"];
-            p.series = "";
-            p.filters = [];
-            p.formulas = [];
-            p.columns =
-              p.source === "followers"
-                ? ["date", "measured_at", "followers"]
-                : [
-                    "title",
-                    "date",
-                    "character",
-                    "likes",
-                    "retweets",
-                    "impressions",
-                  ];
-            p.table_sort = "date";
-            p.table_sorts = null;
-            p.table_group = "";
-            p.table_collapsed_groups = [];
-            if (p.chart === "scatter") p.x = "date";
+            applySource(p, value);
             structural = true;
           }
           if (el.dataset.field === "chart") {
-            p.transform = "none";
-            if (["pie", "table", "scatter"].includes(p.chart))
-              p.compare_previous = false;
-            if (p.chart === "pie") p.y = p.y.slice(0, 1);
-            if (p.chart === "scatter") {
-              const validX =
-                state.metadata.sources[p.source].some(
-                  (f) => f.key === p.x && ["number", "date"].includes(f.type),
-                ) || p.formulas.some((f) => f.key === p.x && f.scope === "row");
-              if (!validX) p.x = "date";
-              const numericRows = fieldOptions(p, {
-                numeric: true,
-                rowOnly: true,
-              });
-              p.y = p.y.filter((key) => key in numericRows);
-              if (!p.y.length)
-                p.y = [p.source === "followers" ? "followers" : "likes"];
-              if (p.allocation === "split") p.allocation = "full";
-            }
-            if (p.chart === "histogram") {
-              p.x = p.y[0];
-              p.series = "";
-            }
+            applyChart(p, value);
             structural = true;
           }
           if (el.dataset.field === "transform") structural = true;
@@ -1450,6 +2173,7 @@
           if (el.dataset.field === "title") {
             const i = state.view.config.panels.indexOf(p);
             if (i >= 0) $("#settings-title").textContent = p.title;
+            updateSettingsHeader(p);
           }
           if (property === "scope") structural = true;
           settingsChanged(structural);
@@ -1464,10 +2188,36 @@
         );
       });
     $("#settings-body")
+      .querySelectorAll("[data-source-card]")
+      .forEach(
+        (el) =>
+          (el.onchange = () => {
+            if (!el.checked || !confirmSourceChange(p)) {
+              renderSettings();
+              return;
+            }
+            rememberChange("source");
+            applySource(p, el.value);
+            settingsChanged(true);
+          }),
+      );
+    $("#settings-body")
+      .querySelectorAll("[data-chart-card]")
+      .forEach(
+        (el) =>
+          (el.onchange = () => {
+            if (!el.checked) return;
+            rememberChange("chart");
+            applyChart(p, el.value);
+            settingsChanged(true);
+          }),
+      );
+    $("#settings-body")
       .querySelectorAll("[data-y],[data-column]")
       .forEach(
         (el) =>
           (el.onchange = () => {
+            rememberChange(el.dataset.y ? "y" : "columns");
             const key = el.dataset.y ? "y" : "columns",
               field = el.dataset.y || el.dataset.column;
             p[key] = el.checked
@@ -1479,14 +2229,17 @@
           }),
       );
     $("#check-all-cols")?.addEventListener("click", () => {
+      rememberChange("columns");
       p.columns = Object.keys(fieldOptions(p, { rowOnly: true }));
       settingsChanged(true);
     });
     $("#check-none-cols")?.addEventListener("click", () => {
+      rememberChange("columns");
       p.columns = [];
       settingsChanged(true);
     });
     $("#check-default-cols")?.addEventListener("click", () => {
+      rememberChange("columns");
       p.columns =
         p.source === "followers"
           ? ["date", "measured_at", "followers"]
@@ -1494,6 +2247,7 @@
       settingsChanged(true);
     });
     $("#check-all-y")?.addEventListener("click", () => {
+      rememberChange("y");
       p.y = Object.keys(
         p.chart === "scatter"
           ? fieldOptions(p, { numeric: true, rowOnly: true })
@@ -1502,6 +2256,7 @@
       settingsChanged(true);
     });
     $("#check-none-y")?.addEventListener("click", () => {
+      rememberChange("y");
       p.y = [];
       settingsChanged(true);
     });
@@ -1509,6 +2264,7 @@
       .querySelectorAll("[data-preset-days]")
       .forEach((btn) => {
         btn.onclick = () => {
+          rememberChange("period_days");
           const days = Number(btn.dataset.presetDays);
           p.period_days = days;
           const inputEl = $("#settings-body [data-field='period_days']");
@@ -1520,6 +2276,7 @@
       .querySelectorAll("[data-color-swatch]")
       .forEach((btn) => {
         btn.onclick = () => {
+          rememberChange("style.color");
           const color = btn.dataset.colorSwatch;
           p.style.color = color;
           const inputEl = $("#settings-body [data-field='style.color']");
@@ -1536,6 +2293,7 @@
         };
       });
     $("#add-filter-group")?.addEventListener("click", () => {
+      rememberChange("filters");
       p.filters.push({
         join: "and",
         rules: [
@@ -1549,6 +2307,7 @@
       settingsChanged(true);
     });
     $("#add-table-sort")?.addEventListener("click", () => {
+      rememberChange("table_sorts");
       const fields = fieldOptions(p, { rowOnly: true }),
         used = new Set(p.table_sorts.map((sort) => sort.field));
       const field = Object.keys(fields).find((field) => !used.has(field));
@@ -1561,6 +2320,7 @@
       .forEach(
         (button) =>
           (button.onclick = () => {
+            rememberChange("table_sorts");
             p.table_sorts.splice(Number(button.dataset.sortRemove), 1);
             settingsChanged(true);
           }),
@@ -1570,6 +2330,7 @@
       .forEach(
         (button) =>
           (button.onclick = () => {
+            rememberChange("table_sorts");
             const [index, delta] = button.dataset.sortMove
                 .split(",")
                 .map(Number),
@@ -1587,6 +2348,7 @@
       .forEach(
         (el) =>
           (el.onclick = () => {
+            rememberChange("filters");
             p.filters[Number(el.dataset.addRule)].rules.push({
               field: p.source === "followers" ? "followers" : "character",
               op: "contains",
@@ -1600,6 +2362,7 @@
       .forEach(
         (el) =>
           (el.onclick = () => {
+            rememberChange("filters");
             p.filters.splice(Number(el.dataset.removeGroup), 1);
             settingsChanged(true);
           }),
@@ -1609,6 +2372,7 @@
       .forEach(
         (el) =>
           (el.onclick = () => {
+            rememberChange("filters");
             const [gi, ri] = el.dataset.removeRule.split(",").map(Number);
             p.filters[gi].rules.splice(ri, 1);
             settingsChanged(true);
@@ -1623,6 +2387,7 @@
         toast("計算指標は10個までです");
         return;
       }
+      rememberChange("formulas");
       p.formulas.push({
         key: id("calc"),
         label,
@@ -1653,6 +2418,7 @@
       .forEach(
         (el) =>
           (el.onclick = () => {
+            rememberChange("formulas");
             const index = Number(el.dataset.removeFormula),
               key = p.formulas[index].key;
             p.formulas.splice(index, 1);
@@ -1679,6 +2445,7 @@
       .forEach(
         (el) =>
           (el.onchange = () => {
+            rememberChange("formulas");
             p.formulas[Number(el.dataset.insertFormula)].expression += el.value;
             settingsChanged(true);
           }),
@@ -1783,6 +2550,18 @@
   };
   $("#close-settings").onclick = () => $("#settings").close();
   $("#done-settings")?.addEventListener("click", () => $("#settings").close());
+  $("#undo-settings")?.addEventListener("click", undoChange);
+  $("#save-view")?.addEventListener("click", saveChanges);
+  $("#save-settings")?.addEventListener("click", saveChanges);
+  window.addEventListener("keydown", (event) => {
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      event.key.toLowerCase() === "s"
+    ) {
+      event.preventDefault();
+      saveChanges();
+    }
+  });
   document
     .querySelectorAll("[data-close]")
     .forEach((el) => (el.onclick = () => $(`#${el.dataset.close}`).close()));
@@ -1794,25 +2573,29 @@
       }),
   );
   $("#view-name").oninput = () => {
+    if (state.view.locked) return;
     state.view.name = $("#view-name").value;
     changed({ render: false });
   };
   $("#layout").onchange = () => {
+    if (state.view.locked) return;
     state.view.config.layout = $("#layout").value;
     changed({ render: false });
     renderWorkspace();
   };
+  $("#toggle-lock").onclick = toggleViewLock;
   $("#add-panel").onclick = () => {
+    if (!state.view) return;
+    if (state.view.locked) {
+      toast("ロック中のビューはパネルを追加できません");
+      return;
+    }
     if (state.view.config.panels.length >= 12) {
       toast("1ビューには12パネルまで追加できます");
       return;
     }
-    state.view.config.panels.push(
-      panelDefaults({ chart: "table", title: "新しいテーブル" }),
-    );
-    state.panel = state.view.config.panels.length - 1;
-    changed();
-    openSettings(state.panel);
+    renderPanelTypes();
+    $("#panel-type-dialog").showModal();
   };
   $("#duplicate-view").onclick = async () => {
     try {
@@ -1823,6 +2606,7 @@
             name: (source.name + " のコピー").slice(0, 100),
             config: clone(source.config),
             revision: 1,
+            locked: false,
           }
         : await api("/api/analytics/views", {
             method: "POST",
@@ -1839,15 +2623,20 @@
     }
   };
   $("#delete-view").onclick = async () => {
-    if (state.saving.has(state.view?.id)) {
+    if (state.view?.locked) {
+      toast("ロック中のビューは削除できません。先にロックを解除してください");
+      return;
+    }
+    if (state.savingAll || state.saving.has(state.view?.id)) {
       toast("設定を保存中です。完了後に削除してください");
       return;
     }
-    if (!confirm("このビューを削除しますか？ 元データは削除されません。"))
-      return;
+    const message = state.dirty.has(state.view.id)
+      ? "このビューには未保存の変更があります。変更を破棄して削除しますか？ 元データは削除されません。"
+      : "このビューを削除しますか？ 元データは削除されません。";
+    if (!confirm(message)) return;
     const view = state.view;
     try {
-      clearTimeout(state.timers.get(view.id));
       if (!DEMO)
         await api(`/api/analytics/views/${encodeURIComponent(view.id)}`, {
           method: "DELETE",
@@ -1871,18 +2660,12 @@
       return;
     }
     setError("");
-    for (const view of state.views)
-      if (state.dirty.has(view.id)) await saveView(view);
     if (state.view) renderPanels();
   };
-  window.addEventListener("online", () => {
-    setError("");
-    for (const view of state.views)
-      if (state.dirty.has(view.id)) saveView(view);
-  });
+  window.addEventListener("online", () => setError(""));
   window.addEventListener("beforeunload", (event) => {
     saveDrafts();
-    if (state.dirty.size && !DEMO) {
+    if (state.dirty.size) {
       event.preventDefault();
       event.returnValue = "";
     }
@@ -1904,6 +2687,7 @@
   });
   async function init() {
     renderTemplates();
+    renderPanelTypes();
     try {
       if (DEMO) {
         $("#demo-banner").hidden = false;
@@ -1922,6 +2706,7 @@
           }));
           store(storageKey("views"), state.views);
         }
+        state.views.forEach(normalizeView);
         const overrides = getStored("xart_demo_characters", {});
         state.metadata.characters = [
           ...new Set([
@@ -1941,7 +2726,7 @@
           api("/api/analytics/views"),
         ]);
         state.metadata = metadata;
-        state.views = views.views;
+        state.views = views.views.map(normalizeView);
         const drafts = getStored(storageKey("drafts"), []);
         drafts.forEach((draft) => {
           const saved = state.views.find((view) => view.id === draft.id);
@@ -1956,9 +2741,7 @@
       }
       renderAccount();
       selectView(getStored(storageKey("active"), state.views.at(-1)?.id));
-      saveStatus(DEMO ? "ブラウザーに保存" : "すべて保存済み");
-      for (const view of state.views)
-        if (state.dirty.has(view.id)) saveView(view);
+      updateSaveState();
       openConflict();
     } catch (error) {
       setError(error.message);

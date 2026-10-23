@@ -284,7 +284,9 @@ def validate_panel(panel: Panel):
             "前期間比較では直近の日数、または開始日と終了日を指定してください"
         )
     if panel.compare_previous and panel.chart in {"table", "pie", "scatter"}:
-        raise ValueError("前期間比較は折れ線・箱ひげ図・ヒストグラムで使用できます")
+        raise ValueError(
+            "前期間比較は折れ線・棒グラフ・箱ひげ図・ヒストグラムで使用できます"
+        )
     return trees
 
 

@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS analytics_views (
     name TEXT NOT NULL,
     config TEXT NOT NULL,
     revision INTEGER NOT NULL DEFAULT 1,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    locked INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_views_owner ON analytics_views(owner, updated_at);
 
@@ -115,6 +116,13 @@ def init_db(db_path: str | None = None) -> None:
             connection.execute("UPDATE artworks SET character_manual = 1 WHERE character IS NOT NULL AND TRIM(character) != ''")
             connection.execute("INSERT OR IGNORE INTO characters SELECT DISTINCT TRIM(character) FROM artworks WHERE character IS NOT NULL AND TRIM(character) != ''")
             connection.execute("INSERT OR IGNORE INTO artwork_characters SELECT id, TRIM(character) FROM artworks WHERE character IS NOT NULL AND TRIM(character) != ''")
+        view_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(analytics_views)")
+        }
+        if "locked" not in view_columns:
+            connection.execute(
+                "ALTER TABLE analytics_views ADD COLUMN locked INTEGER NOT NULL DEFAULT 0"
+            )
 
 
 def _json_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -537,9 +545,14 @@ class ViewConflict(ValueError):
     pass
 
 
+class ViewLocked(ValueError):
+    pass
+
+
 def _view_json(row):
     value = dict(row)
     value["config"] = json.loads(value["config"])
+    value["locked"] = bool(value.get("locked"))
     value.pop("owner")
     return value
 
@@ -555,8 +568,18 @@ def create_analysis_view(owner, name, config, db_path=None):
     init_db(db_path)
     view_id = "view_" + uuid.uuid4().hex
     with _connect(db_path) as connection:
-        connection.execute("INSERT INTO analytics_views VALUES (?, ?, ?, ?, 1, ?)",
-                           (view_id, owner, name, json.dumps(config, ensure_ascii=False), _now()))
+        connection.execute(
+            "INSERT INTO analytics_views "
+            "(id, owner, name, config, revision, updated_at, locked) "
+            "VALUES (?, ?, ?, ?, 1, ?, 0)",
+            (
+                view_id,
+                owner,
+                name,
+                json.dumps(config, ensure_ascii=False),
+                _now(),
+            ),
+        )
         return _view_json(connection.execute("SELECT * FROM analytics_views WHERE id = ?", (view_id,)).fetchone())
 
 
@@ -567,6 +590,8 @@ def update_analysis_view(owner, view_id, name, config, revision, db_path=None):
         row = connection.execute("SELECT * FROM analytics_views WHERE id = ? AND owner = ?", (view_id, owner)).fetchone()
         if not row:
             raise KeyError(view_id)
+        if row["locked"]:
+            raise ViewLocked("ロック中のビューは変更できません。先にロックを解除してください")
         if row["revision"] != revision:
             raise ViewConflict("別のタブで更新されています。変更内容を保持したまま再読み込みしてください")
         connection.execute("UPDATE analytics_views SET name = ?, config = ?, revision = revision + 1, updated_at = ? WHERE id = ? AND owner = ?",
@@ -574,10 +599,51 @@ def update_analysis_view(owner, view_id, name, config, revision, db_path=None):
         return _view_json(connection.execute("SELECT * FROM analytics_views WHERE id = ?", (view_id,)).fetchone())
 
 
+def set_analysis_view_locked(owner, view_id, locked, revision, db_path=None):
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT * FROM analytics_views WHERE id = ? AND owner = ?",
+            (view_id, owner),
+        ).fetchone()
+        if not row:
+            raise KeyError(view_id)
+        if row["revision"] != revision:
+            raise ViewConflict(
+                "別のタブで更新されています。再読み込みしてからロックを変更してください"
+            )
+        connection.execute(
+            "UPDATE analytics_views "
+            "SET locked = ?, revision = revision + 1, updated_at = ? "
+            "WHERE id = ? AND owner = ?",
+            (1 if locked else 0, _now(), view_id, owner),
+        )
+        return _view_json(
+            connection.execute(
+                "SELECT * FROM analytics_views WHERE id = ?", (view_id,)
+            ).fetchone()
+        )
+
+
 def delete_analysis_view(owner, view_id, db_path=None):
     init_db(db_path)
     with _connect(db_path) as connection:
-        return connection.execute("DELETE FROM analytics_views WHERE id = ? AND owner = ?", (view_id, owner)).rowcount > 0
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT locked FROM analytics_views WHERE id = ? AND owner = ?",
+            (view_id, owner),
+        ).fetchone()
+        if not row:
+            return False
+        if row["locked"]:
+            raise ViewLocked(
+                "ロック中のビューは削除できません。先にロックを解除してください"
+            )
+        return connection.execute(
+            "DELETE FROM analytics_views WHERE id = ? AND owner = ?",
+            (view_id, owner),
+        ).rowcount > 0
 
 
 def list_analysis_profiles(db_path=None):

@@ -55,7 +55,8 @@
       view = null,
       xs = null,
       ys = null,
-      xCoordinate = null;
+      xCoordinate = null,
+      barBox = null;
     let temporal = false,
       numericAxis = false;
     const xValues = [...new Set(all.map((p) => p.x))];
@@ -164,7 +165,8 @@
             )
           : Number(value);
       const histogram = panel.chart === "histogram";
-      numericAxis = (numeric || temporal) && panel.chart !== "box";
+      numericAxis =
+        (numeric || temporal) && !["box", "bar"].includes(panel.chart);
       let xmin = numericAxis
         ? Math.min(...all.map((p) => (histogram ? p.start : asNumber(p.x))))
         : -0.5;
@@ -204,6 +206,27 @@
         numericAxis ? asNumber(value) : xValues.indexOf(value);
       xs = (value) => M.l + ((xCoordinate(value) - xmin) / (xmax - xmin)) * pw;
       ys = (value) => M.t + ph - ((value - ymin) / (ymax - ymin)) * ph;
+      if (panel.chart === "bar") {
+        // Bars keep a gap between categories and sit side by side per series.
+        const slot = pw / Math.max(1, xmax - xmin),
+          barWidth = Math.min(
+            (slot * 0.76) / Math.max(1, groups.length),
+            56,
+          ),
+          groupWidth = barWidth * Math.max(1, groups.length);
+        barBox = (p) => {
+          const index = Math.max(0, groups.indexOf(key(p))),
+            zero = ys(0),
+            value = ys(p.y),
+            height = Math.abs(value - zero);
+          return {
+            x: xs(p.x) - groupWidth / 2 + index * barWidth + 1,
+            width: Math.max(1, barWidth - 2),
+            y: height < 1 ? Math.min(zero, value) - 1 : Math.min(zero, value),
+            height: Math.max(1, height),
+          };
+        };
+      }
       const intervalX =
         panel.style.x_tick_interval == null
           ? null
@@ -371,6 +394,23 @@
             p,
           );
         });
+      } else if (panel.chart === "bar") {
+        points.forEach((p) => {
+          if (p.y == null) return;
+          const box = barBox(p);
+          svg += interactive(
+            `<rect class="bar" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" fill="${colorFor(p)}" fill-opacity=".82" rx="2"/>`,
+            tip(p),
+            p,
+          );
+          if (panel.style.labels)
+            svg += text(
+              box.x + box.width / 2,
+              p.y >= 0 ? box.y - 4 : box.y + box.height + 11,
+              fmt(p.y),
+              'text-anchor="middle"',
+            );
+        });
       }
       svg += '</g><g class="chart-inspection" pointer-events="none"></g>';
     }
@@ -508,11 +548,18 @@
           hide();
           return;
         }
+        const distance = (p) => {
+          if (panel.chart !== "bar" || !barBox)
+            return Math.hypot(xs(p.x) - pos.x, ys(p.y) - pos.y);
+          // Hit the whole bar, not only its top edge.
+          const box = barBox(p);
+          return Math.hypot(
+            Math.max(box.x - pos.x, 0, pos.x - box.x - box.width),
+            Math.max(box.y - pos.y, 0, pos.y - box.y - box.height),
+          );
+        };
         const nearest = eligible.reduce((a, b) =>
-          Math.hypot(xs(a.x) - pos.x, ys(a.y) - pos.y) <=
-          Math.hypot(xs(b.x) - pos.x, ys(b.y) - pos.y)
-            ? a
-            : b,
+          distance(a) <= distance(b) ? a : b,
         );
         showPoints(
           [nearest],

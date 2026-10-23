@@ -47,14 +47,25 @@
           >
           <div class="header-actions">
             <span id="save-status" role="status" aria-live="polite"></span
-            ><button id="refresh" class="quiet-button">
+            ><button
+              id="save-view"
+              class="primary-button"
+              type="button"
+              aria-label="ビュー設定を保存"
+              aria-keyshortcuts="Control+S Meta+S"
+              title="保存 (Ctrl/⌘+S)"
+              disabled
+            >
+              <span data-icon="check"></span>保存
+            </button>
+            <button id="refresh" class="quiet-button">
               <span data-icon="refresh"></span>更新
             </button>
           </div>
         </header>
         <div id="demo-banner" class="demo-banner" hidden>
           <span
-            >サンプルデータで操作中 · 設定はこのブラウザーに保存されます</span
+            >サンプルデータで操作中 · 設定は「保存」でこのブラウザーに保存されます</span
           ><a href="/analytics">実データへ</a>
         </div>
         <main id="workspace" tabindex="-1">
@@ -80,7 +91,10 @@
                   id="view-name"
                   aria-label="ビュー名"
                   maxlength="100"
-                /><span id="layout-label" class="soft-badge"></span>
+                /><span id="layout-label" class="soft-badge"></span
+                ><span id="view-lock-state" class="soft-badge lock-badge" hidden
+                  ><span data-icon="lock"></span>ロック中</span
+                >
               </div>
               <div class="view-actions">
                 <label class="compact-select"
@@ -89,6 +103,15 @@
                     <option value="single">単独表示</option>
                     <option value="dashboard">ダッシュボード</option>
                   </select></label
+                ><button
+                  id="toggle-lock"
+                  class="icon-button"
+                  type="button"
+                  aria-label="ビューをロック"
+                  aria-pressed="false"
+                  title="ビューをロック"
+                >
+                  <span data-icon="lock"></span></button
                 ><button
                   id="duplicate-view"
                   class="icon-button"
@@ -138,6 +161,7 @@
       <div class="dialog-head">
         <div>
           <p class="eyebrow">PANEL SETTINGS · パネル設定</p>
+          <p id="settings-context" class="settings-context"></p>
           <div class="settings-title-row">
             <span id="settings-type-badge" class="settings-badge"></span>
             <h2 id="settings-title">パネルの設定</h2>
@@ -151,22 +175,42 @@
           <span data-icon="close"></span>
         </button>
       </div>
+      <div
+        id="settings-summary"
+        class="settings-summary"
+        aria-live="polite"
+      ></div>
+      <p id="settings-error" class="error-message" role="alert" hidden></p>
       <nav class="settings-tabs" aria-label="設定カテゴリー">
-        <button data-tab="data" aria-pressed="true"><span data-icon="data"></span><span>データ</span></button
-        ><button data-tab="axes"><span data-icon="chart"></span><span>軸・集計</span></button
-        ><button data-tab="organize" hidden><span data-icon="sort"></span><span>グループ・並べ替え</span></button
+        <button data-tab="data" aria-pressed="true"><span data-icon="data"></span><span>基本</span></button
+        ><button data-tab="axes"><span data-icon="chart"></span><span>表示</span></button
         ><button data-tab="filters"><span data-icon="filter"></span><span>絞り込み</span></button
-        ><button data-tab="formulas"><span data-icon="formula"></span><span>計算式</span></button
-        ><button data-tab="style"><span data-icon="style"></span><span>見た目</span></button>
+        ><button data-tab="style"><span data-icon="style"></span><span>見た目</span></button
+        ><button data-tab="advanced"><span data-icon="formula"></span><span>詳細</span></button>
       </nav>
       <div id="settings-body"></div>
-      <p id="settings-error" class="error-message" role="alert" hidden></p>
       <footer class="settings-footer">
         <div class="settings-footer-left">
           <span data-icon="check"></span>
-          <span>変更はビューに自動保存されます</span>
+          <span id="settings-save-state">変更は「保存」で確定します</span>
         </div>
-        <button id="done-settings" class="primary-button-sm">完了</button>
+        <div class="settings-footer-actions">
+          <button id="undo-settings" class="quiet-button" type="button" disabled>
+            元に戻す
+          </button>
+          <button id="done-settings" class="quiet-button" type="button">
+            閉じる
+          </button>
+          <button
+            id="save-settings"
+            class="primary-button-sm"
+            type="button"
+            aria-label="ビュー設定を保存"
+            disabled
+          >
+            保存
+          </button>
+        </div>
       </footer>
     </dialog>
     <dialog
@@ -185,6 +229,29 @@
         </button>
       </div>
       <div id="create-templates" class="template-grid"></div>
+    </dialog>
+    <dialog
+      id="panel-type-dialog"
+      class="create-dialog panel-type-dialog"
+      aria-labelledby="panel-type-title"
+    >
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">ADD PANEL · パネル追加</p>
+          <h2 id="panel-type-title">表・グラフを追加</h2>
+        </div>
+        <button
+          class="icon-button"
+          data-close="panel-type-dialog"
+          aria-label="閉じる"
+        >
+          <span data-icon="close"></span>
+        </button>
+      </div>
+      <p class="panel-type-lead">
+        作りたいものから選んでください。あとから設定で自由に変更できます。
+      </p>
+      <div id="panel-types" class="template-grid panel-type-grid"></div>
     </dialog>
     <dialog
       id="character-dialog"

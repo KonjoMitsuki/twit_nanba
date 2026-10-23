@@ -7,7 +7,13 @@ import config
 from api.profiles import selected_profile
 from processing.analysis import available_fields, query, validate_panel
 from processing.analysis_demo import CHARACTERS, demo_rows
-from processing.analysis_models import Panel, StrictModel, ViewCreate, ViewUpdate
+from processing.analysis_models import (
+    Panel,
+    StrictModel,
+    ViewCreate,
+    ViewLockUpdate,
+    ViewUpdate,
+)
 from processing.character_mapper import load_character_map
 from storage import app_db
 
@@ -133,9 +139,34 @@ def update_view(view_id: str, payload: ViewUpdate, request: Request):
         raise HTTPException(404, "ビューが見つかりません") from error
     except app_db.ViewConflict as error:
         raise HTTPException(409, str(error)) from error
+    except app_db.ViewLocked as error:
+        raise HTTPException(409, str(error)) from error
+
+
+@router.patch("/views/{view_id}/lock")
+def update_view_lock(
+    view_id: str, payload: ViewLockUpdate, request: Request
+):
+    try:
+        return app_db.set_analysis_view_locked(
+            selected_profile(request)["id"],
+            view_id,
+            payload.locked,
+            payload.revision,
+        )
+    except KeyError as error:
+        raise HTTPException(404, "ビューが見つかりません") from error
+    except app_db.ViewConflict as error:
+        raise HTTPException(409, str(error)) from error
 
 
 @router.delete("/views/{view_id}", status_code=204)
 def delete_view(view_id: str, request: Request):
-    if not app_db.delete_analysis_view(selected_profile(request)["id"], view_id):
+    try:
+        deleted = app_db.delete_analysis_view(
+            selected_profile(request)["id"], view_id
+        )
+    except app_db.ViewLocked as error:
+        raise HTTPException(409, str(error)) from error
+    if not deleted:
         raise HTTPException(404, "ビューが見つかりません")

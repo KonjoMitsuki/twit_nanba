@@ -125,7 +125,7 @@ def test_mouse_zoom_pan_crosshair_ticks_and_chart_types():
         )
         assert ticks[1] - ticks[0] == 6 * 3600000
         assert "12:00" in page.locator(".x-tick").first.text_content()
-        for kind in ["scatter", "box", "histogram"]:
+        for kind in ["scatter", "bar", "box", "histogram"]:
             setup_chart(page, chart=kind, categories=kind == "box")
             page.get_by_role("button", name="グラフを拡大", exact=True).click()
             page.wait_for_function(
@@ -253,4 +253,37 @@ def test_post_card_images_counters_safe_content_and_small_screen():
         page.locator("[data-tip]").first.focus()
         assert page.locator(".chart-artwork-card").count() == 1
         assert page.locator(".chart-tooltip-row").count() == 2
+        browser.close()
+
+
+def test_bar_chart_uses_categorical_slots_and_full_bar_hit_area():
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(
+            executable_path=shutil.which("chromium"),
+            headless=True,
+            args=["--no-sandbox"],
+        )
+        page = browser.new_page(viewport={"width": 900, "height": 700})
+        setup_chart(page, chart="bar", categories=True)
+        bars = page.locator(".bar")
+        assert bars.count() == 42
+        boxes = bars.evaluate_all(
+            "els => els.slice(0, 2).map(el => ({x:Number(el.getAttribute('x')), "
+            "width:Number(el.getAttribute('width')), y:Number(el.getAttribute('y')), "
+            "height:Number(el.getAttribute('height'))}))"
+        )
+        # Two series sit side by side inside one category, without touching.
+        assert boxes[0]["x"] + boxes[0]["width"] <= boxes[1]["x"]
+        assert boxes[0]["width"] > 0 and boxes[1]["height"] > boxes[0]["height"]
+        # The whole bar is a hit target, not only the top edge.
+        box = bars.nth(1).bounding_box()
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] * 0.8)
+        tooltip = page.locator(".chart-tooltip")
+        assert tooltip.is_visible()
+        assert "分類0" in tooltip.inner_text()
+        labels_before = page.locator(".chart-svg text").count()
+        page.evaluate("panel.style.labels=true; draw()")
+        assert page.locator(".chart-svg text").count() == labels_before + 42
         browser.close()
