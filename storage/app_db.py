@@ -510,8 +510,17 @@ def analysis_rows(source, stage="24h", db_path=None, *, from_date="0001-01-01", 
                     ORDER BY m.artwork_id, m.elapsed_seconds, m.measured_at, m.id LIMIT 20001""", (from_date, to_date))]
             else:
                 raise ValueError("不明なデータ種類です")
+            images = {}
+            for image in connection.execute(
+                """SELECT i.artwork_id, i.source_url FROM artwork_images i
+                JOIN artworks a ON a.id = i.artwork_id
+                WHERE date(a.posted_at, '+9 hours') >= ? AND date(a.posted_at, '+9 hours') <= ?
+                ORDER BY i.image_order, i.id""", (from_date, to_date)
+            ):
+                images.setdefault(image[0], []).append(image[1])
             for row in rows:
                 row["row_id"] = row["id"]
+                row["image_urls"] = images.get(row["artwork_id"], [])
                 row["characters"] = characters.get(row["artwork_id"], [])
                 row["tags"] = tags.get(row["artwork_id"], [])
                 row["character"] = " + ".join(row["characters"]) or "未設定"

@@ -77,6 +77,7 @@ class Panel(StrictModel):
     window: int = Field(default=7, ge=2, le=100)
     compare_previous: bool = False
     bins: int = Field(default=12, ge=2, le=80)
+    show_images: bool = True
     columns: list[str] = Field(
         default_factory=lambda: [
             "title",

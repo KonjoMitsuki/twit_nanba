@@ -58,6 +58,7 @@ def demo_rows(source, stage="24h", overrides=None):
                     else f"{identity}_{definition['name']}",
                     "title": f"{characters[0] if characters else '無題'} / Study {i + 1:02}",
                     "url": "",
+                    "image_urls": ["/demo-artwork.svg"] * (1 + i % 4) if i % 11 else [],
                     "date": posted.date().isoformat(),
                     "posted_at": posted.isoformat(),
                     "measured_at": None if missing else measured.isoformat(),

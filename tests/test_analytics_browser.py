@@ -11,6 +11,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from storage import app_db
+
 pytestmark = pytest.mark.skipif(
     os.getenv("ANALYTICS_BROWSER_TESTS") != "1",
     reason="Set ANALYTICS_BROWSER_TESTS=1 and install a Playwright browser",
@@ -27,6 +29,25 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
     env["APP_DB_PATH"] = str(tmp_path / "browser.db")
     for key in ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_ALLOWED_EMAILS"]:
         env[key] = ""
+    for suffix, image_urls in [
+        (
+            "photo",
+            [
+                f"http://127.0.0.1:{port}/demo-artwork.svg",
+                f"http://127.0.0.1:{port}/demo-artwork.svg?second",
+            ],
+        ),
+        ("broken", [f"http://127.0.0.1:{port}/missing-photo.svg"]),
+        ("empty", []),
+    ]:
+        app_db.create_artwork(
+            tweet_id=suffix,
+            url=f"https://example.com/{suffix}",
+            title=suffix,
+            posted_at="2026-10-10T00:00:00+00:00",
+            image_urls=image_urls,
+            db_path=env["APP_DB_PATH"],
+        )
     process = subprocess.Popen(
         [
             sys.executable,
@@ -130,6 +151,30 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             assert page.locator("#profile-user").input_value() == "profile_a"
             page.locator('#starter-templates [data-template="0"]').click()
             page.wait_for_selector("#view-name")
+            page.wait_for_function(
+                "Array.from(document.querySelectorAll('.artwork-thumbnail img')).some(img => img.naturalWidth > 0)"
+            )
+            assert page.locator(".artwork-image-count").inner_text() == "2枚"
+            page.wait_for_function(
+                "Array.from(document.querySelectorAll('.artwork-image-empty')).some(el => !el.hidden && el.textContent === '読み込めません')"
+            )
+            assert (
+                page.locator(".artwork-image-empty", has_text="写真なし").count() == 1
+            )
+            assert "/artworks/" in page.locator(
+                "a.artwork-thumbnail"
+            ).first.get_attribute("href")
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            page.get_by_role("button", name="作品テーブルの設定", exact=True).click()
+            page.get_by_role("button", name="軸・集計", exact=True).click()
+            page.get_by_label("投稿写真を表示", exact=True).uncheck()
+            page.wait_for_function(
+                "document.querySelector('#save-status').textContent === 'すべて保存済み'"
+            )
+            page.keyboard.press("Escape")
+            page.reload()
+            page.wait_for_selector(".table-scroll")
+            assert page.locator(".artwork-thumbnail").count() == 0
             page.get_by_label("ビュー名", exact=True).fill("利用者Aの分析")
             page.wait_for_function(
                 "document.querySelector('#save-status').textContent === 'すべて保存済み'"

@@ -238,3 +238,40 @@ def test_views_are_private_and_revision_conflicts_preserve_changes(dataset):
         app_db.update_analysis_view("user_a", view["id"], "Stale", {}, 1)
     assert app_db.list_analysis_views("user_a")[0]["name"] == "Updated"
     assert not app_db.delete_analysis_view("user_b", view["id"])
+
+
+def test_table_photos_are_ordered_and_present_without_the_selected_stage(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(app_db, "DB_PATH", str(tmp_path / "photos.db"))
+    urls = ["https://images.example/cover.jpg", "https://images.example/second.jpg"]
+    artwork_id = app_db.create_artwork(
+        tweet_id="photos",
+        url="https://example.com/photos",
+        title="写真で識別",
+        posted_at="2026-10-01T00:00:00+00:00",
+        image_urls=urls,
+    )
+    app_db.create_artwork(
+        tweet_id="no-photos",
+        url="https://example.com/no-photos",
+        title="画像なし",
+        posted_at="2026-10-01T00:00:00+00:00",
+    )
+    app_db.add_metric_snapshot(
+        artwork_id,
+        stage="1h",
+        elapsed_seconds=3600,
+        measured_at="2026-10-01T01:00:00+00:00",
+        likes=10,
+    )
+    rows = query(Panel(chart="table", stage="24h"))["rows"]
+    with_photos = next(row for row in rows if row["artwork_id"] == artwork_id)
+    assert with_photos["image_urls"] == urls
+    assert with_photos["likes"] is None
+    assert (
+        next(row for row in rows if row["artwork_id"] != artwork_id)["image_urls"] == []
+    )
+    snapshots = query(Panel(chart="table", source="snapshots"))["rows"]
+    assert snapshots[0]["image_urls"] == urls
+    assert Panel(chart="table").show_images is True

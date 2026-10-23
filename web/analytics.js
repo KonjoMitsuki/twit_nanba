@@ -118,6 +118,7 @@
       window: 7,
       compare_previous: false,
       bins: 12,
+      show_images: true,
       columns: [
         "title",
         "date",
@@ -660,8 +661,30 @@
       );
     });
     const shown = rows.slice(page * 50, (page + 1) * 50),
-      columns = panel.columns;
+      columns =
+        panel.source !== "followers" && panel.show_images !== false
+          ? ["image", ...panel.columns]
+          : panel.columns;
     const cell = (row, key) => {
+      if (key === "image") {
+        const images = row.image_urls || [];
+        let src;
+        try {
+          const url = new URL(images[0], location.origin);
+          if (images.length && ["https:", "http:"].includes(url.protocol)) {
+            if (url.hostname.endsWith(".twimg.com"))
+              url.searchParams.set("name", "small");
+            src = url.href;
+          }
+        } catch {
+          /* Missing or unsupported image URLs get the placeholder. */
+        }
+        if (!src) return '<span class="artwork-image-empty">写真なし</span>';
+        const picture = `<img src="${esc(src)}" width="88" height="88" loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="${esc(row.title)}の投稿写真"><span class="artwork-image-empty" hidden>読み込めません</span>${images.length > 1 ? `<span class="artwork-image-count">${images.length}枚</span>` : ""}`;
+        return DEMO
+          ? `<span class="artwork-thumbnail">${picture}</span>`
+          : `<a class="artwork-thumbnail" href="/artworks/${encodeURIComponent(row.artwork_id)}" aria-label="${esc(row.title)}の写真・作品詳細を見る">${picture}</a>`;
+      }
       if (key === "character" && row.artwork_id)
         return `<button class="character-cell" data-artwork="${esc(row.artwork_id)}" aria-label="${esc(row.title)}のキャラクターを編集">${row.characters.length ? row.characters.map((name) => `<span class="character-chip">${esc(name)}</span>`).join("") : '<span class="missing-value">キャラを設定</span>'}</button>`;
       if (row[key] == null) return '<span class="missing-value">未計測</span>';
@@ -670,7 +693,15 @@
       if (Array.isArray(row[key])) return esc(row[key].join(" / "));
       return esc(typeof row[key] === "number" ? fmt(row[key]) : row[key]);
     };
-    host.innerHTML = `<div class="table-scroll"><table><thead><tr>${columns.map((key) => `<th aria-sort="${sort === key ? (panel.table_desc ? "descending" : "ascending") : "none"}"><button data-sort="${esc(key)}">${esc(data.fields[key] || key)} ${sort === key ? (panel.table_desc ? "↓" : "↑") : ""}</button></th>`).join("")}</tr></thead><tbody>${shown.map((row) => `<tr>${columns.map((key) => `<td>${cell(row, key)}</td>`).join("")}</tr>`).join("")}</tbody></table>${!shown.length ? '<p class="panel-empty">条件に一致する作品がありません</p>' : ""}</div><div class="table-pagination"><span>${rows.length ? `${page * 50 + 1}〜${Math.min((page + 1) * 50, rows.length)} / ` : ""}${fmt(rows.length)}行</span><div><button class="quiet-button" data-page="-1" ${page === 0 ? "disabled" : ""}>前へ</button><button class="quiet-button" data-page="1" ${(page + 1) * 50 >= rows.length ? "disabled" : ""}>次へ</button></div></div>`;
+    host.innerHTML = `<div class="table-scroll"><table><thead><tr>${columns.map((key) => (key === "image" ? '<th scope="col">投稿写真</th>' : `<th aria-sort="${sort === key ? (panel.table_desc ? "descending" : "ascending") : "none"}"><button data-sort="${esc(key)}">${esc(data.fields[key] || key)} ${sort === key ? (panel.table_desc ? "↓" : "↑") : ""}</button></th>`)).join("")}</tr></thead><tbody>${shown.map((row) => `<tr>${columns.map((key) => `<td>${cell(row, key)}</td>`).join("")}</tr>`).join("")}</tbody></table>${!shown.length ? '<p class="panel-empty">条件に一致する作品がありません</p>' : ""}</div><div class="table-pagination"><span>${rows.length ? `${page * 50 + 1}〜${Math.min((page + 1) * 50, rows.length)} / ` : ""}${fmt(rows.length)}行</span><div><button class="quiet-button" data-page="-1" ${page === 0 ? "disabled" : ""}>前へ</button><button class="quiet-button" data-page="1" ${(page + 1) * 50 >= rows.length ? "disabled" : ""}>次へ</button></div></div>`;
+    host.querySelectorAll(".artwork-thumbnail img").forEach((image) => {
+      const failed = () => {
+        image.hidden = true;
+        image.nextElementSibling.hidden = false;
+      };
+      image.addEventListener("error", failed, { once: true });
+      if (image.complete && !image.naturalWidth) failed();
+    });
     host.querySelectorAll("[data-sort]").forEach(
       (button) =>
         (button.onclick = () => {
@@ -779,6 +810,8 @@
       const all = fieldOptions(p, { rowOnly: true }),
         numbers = fieldOptions(p, { numeric: true });
       if (p.chart === "table") {
+        if (p.source !== "followers")
+          html += `<label class="toggle-label"><input type="checkbox" data-field="show_images" ${p.show_images !== false ? "checked" : ""}>投稿写真を表示</label><p class="settings-help">写真をタップすると作品詳細を開きます。複数画像の投稿は枚数を表示します。</p>`;
         html += `<span class="field-label">表示する列</span><div class="check-options">${Object.entries(
           all,
         )

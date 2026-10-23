@@ -1479,3 +1479,50 @@ dialog::backdrop {
 [hidden] {
   display: none;
 }
+
+/* A stable, uncropped cover image makes works identifiable in data tables. */
+.artwork-thumbnail {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.artwork-thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.artwork-thumbnail img[hidden] {
+  display: none;
+}
+.artwork-thumbnail:hover {
+  border-color: var(--accent);
+}
+.artwork-image-empty {
+  display: inline-grid;
+  place-items: center;
+  min-width: 88px;
+  min-height: 44px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.artwork-image-empty[hidden] {
+  display: none;
+}
+.artwork-image-count {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  border-radius: 3px;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 1px 5px;
+  font-size: 10px;
+  line-height: 1.6;
+}
