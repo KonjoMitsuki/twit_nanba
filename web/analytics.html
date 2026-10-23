@@ -137,8 +137,11 @@
     >
       <div class="dialog-head">
         <div>
-          <p class="eyebrow">VIEW SETTINGS</p>
-          <h2 id="settings-title">パネルの設定</h2>
+          <p class="eyebrow">PANEL SETTINGS · パネル設定</p>
+          <div class="settings-title-row">
+            <span id="settings-type-badge" class="settings-badge"></span>
+            <h2 id="settings-title">パネルの設定</h2>
+          </div>
         </div>
         <button
           id="close-settings"
@@ -149,18 +152,21 @@
         </button>
       </div>
       <nav class="settings-tabs" aria-label="設定カテゴリー">
-        <button data-tab="data" aria-pressed="true">データ</button
-        ><button data-tab="axes">軸・集計</button
-        ><button data-tab="organize" hidden>グループ・並べ替え</button
-        ><button data-tab="filters">絞り込み</button
-        ><button data-tab="formulas">計算式</button
-        ><button data-tab="style">見た目</button>
+        <button data-tab="data" aria-pressed="true"><span data-icon="data"></span><span>データ</span></button
+        ><button data-tab="axes"><span data-icon="chart"></span><span>軸・集計</span></button
+        ><button data-tab="organize" hidden><span data-icon="sort"></span><span>グループ・並べ替え</span></button
+        ><button data-tab="filters"><span data-icon="filter"></span><span>絞り込み</span></button
+        ><button data-tab="formulas"><span data-icon="formula"></span><span>計算式</span></button
+        ><button data-tab="style"><span data-icon="style"></span><span>見た目</span></button>
       </nav>
       <div id="settings-body"></div>
       <p id="settings-error" class="error-message" role="alert" hidden></p>
       <footer class="settings-footer">
-        <span data-icon="check"></span
-        >変更は選択した利用者のビューに自動保存されます
+        <div class="settings-footer-left">
+          <span data-icon="check"></span>
+          <span>変更はビューに自動保存されます</span>
+        </div>
+        <button id="done-settings" class="primary-button-sm">完了</button>
       </footer>
     </dialog>
     <dialog

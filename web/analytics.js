@@ -31,6 +31,11 @@
     down: '<path d="m6 10 6 6 6-6"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',
     check: '<path d="m5 12 4 4L20 5"/>',
+    data: '<path d="M4 6c0-1.66 3.58-3 8-3s8 1.34 8 3v12c0 1.66-3.58 3-8 3s-8-1.34-8-3V6Z"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3M4 6c0 1.66 3.58 3 8 3s8-1.34 8-3"/>',
+    sort: '<path d="m3 16 4 4 4-4M7 20V4m14 4-4-4-4 4m4-4v16"/>',
+    filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+    formula: '<path d="M7 4h10M7 20h10M6 8l4 4-4 4m6-4h6m-6 4h6"/>',
+    style: '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.92 0 1.5-.74 1.5-1.5 0-.42-.16-.8-.42-1.08-.26-.28-.42-.66-.42-1.08 0-.92.75-1.67 1.67-1.67H16c3.31 0 6-2.69 6-6 0-4.97-4.48-9.83-10-8.67Z"/>',
   };
   const icon = (name) =>
     `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.chart}</svg>`;
@@ -58,25 +63,25 @@
     newCharacters: [],
   };
   const chartNames = {
-    table: "テーブル",
-    line: "折れ線グラフ",
-    pie: "円グラフ",
-    scatter: "散布図",
-    box: "箱ひげ図",
-    histogram: "ヒストグラム",
+    table: "テーブル（一覧表）",
+    line: "折れ線グラフ（推移）",
+    pie: "円グラフ（構成比）",
+    scatter: "散布図（相関）",
+    box: "箱ひげ図（分布）",
+    histogram: "ヒストグラム（度数分布）",
   };
   const sourceNames = {
-    artworks: "作品ごと（指定時点）",
-    snapshots: "計測ログ（時系列）",
-    followers: "フォロワー履歴",
+    artworks: "作品データ（ステージ別）",
+    snapshots: "計測ログ（時系列推移）",
+    followers: "フォロワー推移",
   };
   const aggregates = {
-    mean: "平均",
-    median: "中央値",
-    sum: "合計",
-    min: "最小値",
-    max: "最大値",
-    count: "件数",
+    mean: "平均値 (mean)",
+    median: "中央値 (median)",
+    sum: "合計 (sum)",
+    min: "最小値 (min)",
+    max: "最大値 (max)",
+    count: "件数・作品数 (count)",
   };
   const id = (prefix) =>
     `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
@@ -813,6 +818,8 @@
     renderSettings();
     $("#settings").showModal();
   }
+  const sectionTitle = (title, help = "") =>
+    `<div class="settings-section"><h3 class="settings-section-title">${esc(title)}</h3>${help ? `<p class="settings-section-desc">${esc(help)}</p>` : ""}</div>`;
   const labelField = (label, content, help = "") =>
     `<div class="settings-field"><label>${esc(label)}</label>${content}${help ? `<p class="settings-help">${esc(help)}</p>` : ""}</div>`;
   const input = (path, value, type = "text", attrs = "") =>
@@ -840,6 +847,10 @@
     const p = currentPanel();
     if (!p) return;
     $("#settings-title").textContent = p.title;
+    const badge = $("#settings-type-badge");
+    if (badge) {
+      badge.innerHTML = `${icon(p.chart)}<span>${esc((chartNames[p.chart] || p.chart).split("（")[0])}</span>`;
+    }
     $("#settings-error").hidden = true;
     document.querySelector('[data-tab="organize"]').hidden =
       p.chart !== "table";
@@ -854,15 +865,17 @@
     let html = "";
     if (state.tab === "data") {
       html =
+        sectionTitle("基本情報", "パネルの表示名とグラフの形式を設定します") +
         labelField(
           "パネル名",
-          input("title", p.title, "text", 'maxlength="120"'),
+          input("title", p.title, "text", 'maxlength="120" placeholder="パネル名を入力"'),
         ) +
         labelField("表示形式", select("chart", p.chart, chartNames)) +
+        sectionTitle("データソース", "集計対象のデータ種別と計測タイミング") +
         labelField(
           "データの種類",
           select("source", p.source, sourceNames),
-          "作品・計測ログ・アカウントの履歴を区別して集計します。",
+          "作品ごとの確定値、時系列の推移ログ、またはフォロワー履歴から選択します。",
         );
       if (p.source === "artworks")
         html += labelField(
@@ -874,34 +887,59 @@
               state.metadata.stages.map((s) => [s.name, s.name]),
             ),
           ),
-          "指定した計測がない作品は未計測とし、集計から除外します。",
+          "指定した経過時間（ステージ）の計測データがある作品を集計します（未計測は除外）。",
         );
       html +=
+        sectionTitle("集計期間", "対象とする投稿日または計測日の範囲") +
         labelField(
           "直近の日数（0＝全期間）",
-          input("period_days", p.period_days, "number", 'min="0" max="3660"'),
+          input("period_days", p.period_days, "number", 'min="0" max="3660"') +
+          `<div class="period-pills">
+            <button type="button" class="pill-btn" data-preset-days="0">全期間</button>
+            <button type="button" class="pill-btn" data-preset-days="7">直近7日</button>
+            <button type="button" class="pill-btn" data-preset-days="30">直近30日</button>
+            <button type="button" class="pill-btn" data-preset-days="90">直近90日</button>
+            <button type="button" class="pill-btn" data-preset-days="365">直近1年</button>
+          </div>`,
+          "直近の指定日数でデータを絞り込みます（0で全期間）。ワンクリックで期間を選択できます。",
         ) +
-        `<div class="field-grid">${labelField("開始日", input("from_date", p.from_date, "date"))}${labelField("終了日", input("to_date", p.to_date, "date"))}</div>`;
+        `<div class="field-grid">${labelField("開始日", input("from_date", p.from_date, "date"))}${labelField("終了日", input("to_date", p.to_date, "date"))}</div>` +
+        `<p class="settings-help">※ 開始日・終了日を指定した場合、上記の日数指定よりも日付範囲が優先されます。</p>`;
       if (!["table", "pie", "scatter"].includes(p.chart))
-        html += `<label class="toggle-label"><input type="checkbox" data-field="compare_previous" ${p.compare_previous ? "checked" : ""}>前の同じ長さの期間と比較</label><p class="settings-help">日付軸では前期間を現在の期間に揃えて重ねます。日数または開始・終了日を指定してください。</p>`;
+        html +=
+          sectionTitle("比較オプション", "過去の同期間データとの比較") +
+          `<label class="toggle-label"><input type="checkbox" data-field="compare_previous" ${p.compare_previous ? "checked" : ""}><span class="toggle-switch"></span>前の同じ長さの期間と比較</label><p class="settings-help">直前の同じ長さの期間データを薄い線で重ねて前期間と比較します。</p>`;
     } else if (state.tab === "axes") {
       const all = fieldOptions(p, { rowOnly: true }),
         numbers = fieldOptions(p, { numeric: true });
       if (p.chart === "table") {
-        if (p.source !== "followers")
-          html += `<label class="toggle-label"><input type="checkbox" data-field="show_images" ${p.show_images !== false ? "checked" : ""}>投稿写真を表示</label><p class="settings-help">写真をタップすると作品詳細を開きます。複数画像の投稿は枚数を表示します。</p>`;
-        html += `<span class="field-label">表示する列</span><div class="check-options">${Object.entries(
-          all,
-        )
-          .map(
-            ([key, label]) =>
-              `<label><input type="checkbox" data-column="${key}" ${p.columns.includes(key) ? "checked" : ""}>${esc(label)}</label>`,
-          )
-          .join(
-            "",
-          )}</div><p class="settings-help">列見出しをタップすると並べ替えできます。元データはキャラクターだけ編集できます。</p>`;
+        const selectedCols = p.columns || [];
+        html =
+          sectionTitle("表示列の選択", "表に表示するデータ項目を選択します") +
+          `<div class="check-actions-bar">
+            <span class="selection-count">${selectedCols.length}項目 選択中</span>
+            <div class="check-actions-btns">
+              <button type="button" class="mini-btn" id="check-all-cols">全選択</button>
+              <button type="button" class="mini-btn" id="check-none-cols">全解除</button>
+              <button type="button" class="mini-btn" id="check-default-cols">標準列</button>
+            </div>
+          </div>
+          <span class="field-label" style="display:none;">表示する列</span>
+          <div class="check-options">${Object.entries(all)
+            .map(([key, label]) => {
+              const checked = p.columns.includes(key);
+              return `<label class="check-card ${checked ? "is-checked" : ""}"><input type="checkbox" data-column="${key}" ${checked ? "checked" : ""}><span>${esc(label)}</span></label>`;
+            })
+            .join("")}</div>
+          <p class="settings-help">表の見出しをタップすると昇順・降順に並べ替えできます。キャラクター名は直接編集可能です。</p>`;
+        if (p.source !== "followers") {
+          html +=
+            sectionTitle("表示オプション", "表の見た目と写真の表示") +
+            `<label class="toggle-label"><input type="checkbox" data-field="show_images" ${p.show_images !== false ? "checked" : ""}><span class="toggle-switch"></span>投稿写真を表示</label><p class="settings-help">投稿画像のサムネイルを表示します。タップすると作品詳細を開きます。</p>`;
+        }
       } else {
-        if (p.chart !== "histogram")
+        html = sectionTitle("軸の設定", "グラフの横軸・縦軸の項目を設定します");
+        if (p.chart !== "histogram") {
           html += labelField(
             "横軸・分類",
             select(
@@ -923,91 +961,126 @@
                   )
                 : all,
             ),
+            "横軸（X軸）に配置する項目を選択します（日付、キャラクター、経過時間など）。",
           );
-        html += `<div class="settings-field"><span class="field-label">${p.chart === "histogram" ? "分布を見る数値" : "縦軸・数値"}</span><div class="check-options">${Object.entries(
-          p.chart === "scatter"
-            ? fieldOptions(p, { numeric: true, rowOnly: true })
-            : numbers,
-        )
-          .map(
-            ([key, label]) =>
-              `<label><input type="checkbox" data-y="${key}" ${p.y.includes(key) ? "checked" : ""}>${esc(label)}</label>`,
+        }
+        const selectedY = p.y || [];
+        const isHist = p.chart === "histogram";
+        html += sectionTitle(
+          isHist ? "集計対象の数値" : "集計指標の選択",
+          isHist ? "度数分布を見る数値項目" : "縦軸に集計・プロットする数値指標",
+        );
+        html += `<div class="settings-field">
+          <div class="check-actions-bar">
+            <span class="field-label" style="margin-bottom:0;">${isHist ? "分布を見る数値" : "縦軸・数値"}</span>
+            <div class="check-actions-btns">
+              <span class="selection-count">${selectedY.length}項目 選択中</span>
+              ${!["scatter", "pie", "histogram"].includes(p.chart) ? `
+                <button type="button" class="mini-btn" id="check-all-y">全選択</button>
+                <button type="button" class="mini-btn" id="check-none-y">解除</button>
+              ` : ""}
+            </div>
+          </div>
+          <div class="check-options">${Object.entries(
+            p.chart === "scatter"
+              ? fieldOptions(p, { numeric: true, rowOnly: true })
+              : numbers,
           )
-          .join("")}</div></div>`;
+            .map(([key, label]) => {
+              const checked = p.y.includes(key);
+              return `<label class="check-card ${checked ? "is-checked" : ""}"><input type="checkbox" data-y="${key}" ${checked ? "checked" : ""}><span>${esc(label)}</span></label>`;
+            })
+            .join("")}</div></div>`;
+
+        html += sectionTitle("系列と集計", "色分け・集計方法の指定");
         html += labelField(
           "系列・色分け",
-          select("series", p.series, { "": "色分けなし", ...all }),
+          select("series", p.series, { "": "色分けなし（単一系列）", ...all }),
+          "キャラクターやタグごとに色分けして凡例を表示します。",
         );
-        if (!["box", "histogram", "scatter"].includes(p.chart))
+        if (!["box", "histogram", "scatter"].includes(p.chart)) {
           html += labelField(
             "集計方法",
             select("aggregate", p.aggregate, aggregates),
+            "複数データが存在する場合の計算方法です。",
           );
-        if (p.chart === "histogram")
+        }
+        if (p.chart === "histogram") {
           html += labelField(
             "ビン数",
             input("bins", p.bins, "number", 'min="2" max="80"'),
+            "分布を区切る区間（棒）の数です（2〜80）。",
           );
-        if (p.chart === "line")
+        }
+        if (p.chart === "line") {
           html +=
             labelField(
               "集計後の計算",
               select("transform", p.transform, {
-                none: "そのまま",
-                delta: "前の観測点からの増加数",
+                none: "そのまま（累積値）",
+                delta: "前の観測点からの増加数（差分）",
                 rate: "前の観測点からの増加率（%）",
-                moving_average: "移動平均",
+                moving_average: "移動平均（平滑化）",
               }),
+              "折れ線グラフの変化量やトレンドを見やすく加工します。",
             ) +
             (p.transform === "moving_average"
               ? labelField(
                   "移動平均の観測点数",
                   input("window", p.window, "number", 'min="2" max="100"'),
+                  "平滑化に用いる直近の観測点数（ウィンドウ幅）です。",
                 )
               : "");
+        }
       }
-      if (p.chart === "scatter")
+      if (p.chart === "scatter") {
         html +=
-          '<p class="settings-help">1行を1点として表示します。同じ横軸の値も集計しません。座標が未計測の点は除外します。</p>';
-      if (p.chart === "scatter" && p.source !== "followers")
+          '<p class="settings-help">※ 散布図は1行を1点としてプロットします。座標が未計測の点は除外されます。</p>';
+      }
+      if (p.chart === "scatter" && p.source !== "followers") {
+        html += sectionTitle("複数キャラの扱い", "1作品に複数キャラがある場合の表示");
         html += labelField(
           "複数キャラの表示",
           select(
             "allocation",
             p.allocation === "combination" ? "combination" : "full",
             {
-              full: "各キャラの系列に表示",
-              combination: "組み合わせで色分け",
+              full: "各キャラの系列に表示（重複プロット）",
+              combination: "組み合わせで色分け（共演別）",
             },
           ),
-          "座標は元の値を使います。キャラ数による配分はしません。",
+          "座標は元の値を使用します。キャラ数による数値配分はしません。",
         );
-      else if (p.source !== "followers")
+      } else if (p.source !== "followers") {
+        html += sectionTitle("複数キャラの扱い", "1作品に複数キャラが紐付いている場合の集計基準");
         html += labelField(
           "複数キャラの数え方",
           select("allocation", p.allocation, {
-            full: "各キャラに全量計上",
-            split: "キャラ数で均等配分",
-            combination: "組み合わせを1分類にする",
+            full: "各キャラに全量計上（重複カウント）",
+            split: "キャラ数で均等配分（合計値を分割）",
+            combination: "組み合わせごとに集計（共演別）",
           }),
-          "均等配分では件数と合計を配分し、平均・分位数には同じ重みを使います。",
+          "均等配分では件数や合計値をキャラ数で分割し、平均・中央値には同じ重みを使用します。",
         );
+      }
     } else if (state.tab === "organize") {
       const fields = fieldOptions(p, { rowOnly: true });
       p.table_sorts = AnalysisTable.sortsFor(p).map((sort) => ({ ...sort }));
-      html = labelField(
+      html = sectionTitle("行のグループ化", "指定した項目ごとに表をグループ化して表示します");
+      html += labelField(
         "グループ化する項目",
         select("table_group", p.table_group || "", {
-          "": "グループ化しない",
+          "": "グループ化しない（フラット表示）",
           ...fields,
         }),
+        "キャラクターや日付などで表をカテゴリごとに折りたためるようにします。",
       );
       if (p.table_group) {
         html += labelField(
           "グループの表示順",
           select("table_group_order", p.table_group_order || "asc", {
-            asc: "昇順",
-            desc: "降順",
+            asc: "昇順（A→Z / 小さい順）",
+            desc: "降順（Z→A / 大きい順）",
           }),
         );
         const kind = state.metadata.sources[p.source].find(
@@ -1017,11 +1090,11 @@
           html += labelField(
             "日付のまとめ方",
             select("table_group_dates", p.table_group_dates || "day", {
-              day: "日ごと（JST）",
+              day: "日ごと（日単位・JST）",
               week: "週ごと（月曜開始・JST）",
-              month: "月ごと（JST）",
-              year: "年ごと（JST）",
-              exact: "値が一致するもの",
+              month: "月ごと（月単位・JST）",
+              year: "年ごと（年単位・JST）",
+              exact: "完全一致（同一日時）",
             }),
           );
         if (["character", "tags"].includes(p.table_group))
@@ -1031,16 +1104,17 @@
               "table_group_multivalue",
               p.table_group_multivalue || "individual",
               {
-                individual: "それぞれのグループに表示",
-                combination: "組み合わせでまとめる",
+                individual: "それぞれのグループに重複表示",
+                combination: "組み合わせでひとまとめ",
               },
             ),
-            "複数グループへの表示では同じ行が複数回表示されます。元データと数値は変更しません。",
+            "複数グループへの表示では同じ作品がそれぞれのグループに表示されます。元データは変更されません。",
           );
         html +=
-          '<p class="settings-help">グループ見出しをタップして折りたためます。件数は全行から集計し、折りたたみ状態も保存します。</p>';
+          '<p class="settings-help">グループ見出しをタップして開閉できます。行数・合計はグループごとに自動集計され、折りたたみ状態も保存されます。</p>';
       }
-      html += '<span class="field-label">並べ替え（上の条件から優先）</span>';
+      html += sectionTitle("並べ替え条件", "優先度の高い条件から順に並べ替えます");
+      html += '<span class="field-label" style="display:none;">並べ替え（上の条件から優先）</span>';
       html += p.table_sorts
         .map((sort, index) => {
           const choices = Object.fromEntries(
@@ -1050,74 +1124,152 @@
                 !p.table_sorts.some((other) => other.field === field),
             ),
           );
-          return `<div class="table-sort-rule"><div class="table-sort-heading"><span>優先度 ${index + 1}</span><div><button class="icon-button" data-sort-move="${index},-1" aria-label="並べ替え条件${index + 1}を上へ" ${index === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-button" data-sort-move="${index},1" aria-label="並べ替え条件${index + 1}を下へ" ${index === p.table_sorts.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-button" data-sort-remove="${index}" aria-label="並べ替え条件${index + 1}を削除">${icon("close")}</button></div></div>${labelField(`並べ替え項目 ${index + 1}`, select(`table_sorts.${index}.field`, sort.field, choices))}<label class="toggle-label"><input type="checkbox" data-field="table_sorts.${index}.desc" ${sort.desc ? "checked" : ""}>降順（条件${index + 1}）</label></div>`;
+          return `<div class="table-sort-rule"><div class="table-sort-heading"><span class="sort-priority-badge">優先度 ${index + 1}</span><div class="sort-controls"><button class="icon-button" data-sort-move="${index},-1" aria-label="並べ替え条件${index + 1}を上へ" ${index === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-button" data-sort-move="${index},1" aria-label="並べ替え条件${index + 1}を下へ" ${index === p.table_sorts.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-button danger" data-sort-remove="${index}" aria-label="並べ替え条件${index + 1}を削除">${icon("close")}</button></div></div>${labelField(`並べ替え項目 ${index + 1}`, select(`table_sorts.${index}.field`, sort.field, choices))}<label class="toggle-label"><input type="checkbox" data-field="table_sorts.${index}.desc" ${sort.desc ? "checked" : ""}><span class="toggle-switch"></span>降順（条件${index + 1}）</label></div>`;
         })
         .join("");
-      html += `<button class="quiet-button" id="add-table-sort" ${p.table_sorts.length >= Math.min(5, Object.keys(fields).length) ? "disabled" : ""}>${icon("plus")}並べ替え条件を追加</button><p class="settings-help">最大5条件。未設定・未計測は昇順・降順とも最後に表示します。条件をすべて削除すると元の並び順になります。</p>`;
+      html += `<button class="quiet-button add-btn" id="add-table-sort" ${p.table_sorts.length >= Math.min(5, Object.keys(fields).length) ? "disabled" : ""}>${icon("plus")}並べ替え条件を追加</button><p class="settings-help">最大5条件まで指定できます。未設定・未計測は昇順・降順とも最後に表示されます。</p>`;
     } else if (state.tab === "filters") {
-      html = labelField(
+      html = sectionTitle("条件の結合ルール", "複数グループがある場合の結合ルールを設定します");
+      html += labelField(
         "グループ同士の条件",
         select("filter_join", p.filter_join, {
-          and: "すべて一致（AND）",
-          or: "いずれか一致（OR）",
+          and: "すべての条件グループを満たす（AND）",
+          or: "いずれかの条件グループを満たす（OR）",
         }),
       );
+      html += sectionTitle("フィルター条件グループ", "条件を指定してデータを絞り込みます");
       html += p.filters
         .map(
           (group, gi) =>
-            `<div class="filter-group"><div class="filter-group-head">${select(`filters.${gi}.join`, group.join, { and: "すべて一致", or: "いずれか一致" })}<button class="icon-button" data-remove-group="${gi}" aria-label="条件グループを削除">${icon("close")}</button></div>${group.rules.map((rule, ri) => `<div class="filter-rule">${select(`filters.${gi}.rules.${ri}.field`, rule.field, fieldOptions(p, { rowOnly: true }))}${select(`filters.${gi}.rules.${ri}.op`, rule.op, { eq: "等しい", ne: "異なる", contains: "含む", gt: ">", gte: "≥", lt: "<", lte: "≤", empty: "未設定" })}${input(`filters.${gi}.rules.${ri}.value`, rule.value)}<button data-remove-rule="${gi},${ri}" aria-label="この条件を削除">削除</button></div>`).join("")}<button class="quiet-button" data-add-rule="${gi}">${icon("plus")}条件を追加</button></div>`,
+            `<div class="filter-group">
+              <div class="filter-group-head">
+                <span class="filter-group-label">グループ ${gi + 1}</span>
+                <div class="filter-group-join-wrap">
+                  ${select(`filters.${gi}.join`, group.join, { and: "すべて一致（AND）", or: "いずれか一致（OR）" })}
+                </div>
+                <button class="icon-button danger" data-remove-group="${gi}" aria-label="条件グループを削除">${icon("close")}</button>
+              </div>
+              <div class="filter-rules-list">
+                ${group.rules.map((rule, ri) => `
+                  <div class="filter-rule">
+                    <div class="filter-rule-field">
+                      ${select(`filters.${gi}.rules.${ri}.field`, rule.field, fieldOptions(p, { rowOnly: true }))}
+                    </div>
+                    <div class="filter-rule-op">
+                      ${select(`filters.${gi}.rules.${ri}.op`, rule.op, {
+                        eq: "= 等しい",
+                        ne: "≠ 異なる",
+                        contains: "含む",
+                        gt: "> より大きい",
+                        gte: "≥ 以上",
+                        lt: "< より小さい",
+                        lte: "≤ 以下",
+                        empty: "未設定・空",
+                      })}
+                    </div>
+                    <div class="filter-rule-val">
+                      ${input(`filters.${gi}.rules.${ri}.value`, rule.value, "text", 'placeholder="値を入力…"')}
+                    </div>
+                    <button class="icon-button danger filter-rule-del" data-remove-rule="${gi},${ri}" aria-label="この条件を削除">${icon("close")}</button>
+                  </div>
+                `).join("")}
+              </div>
+              <button class="quiet-button add-btn" data-add-rule="${gi}">${icon("plus")}条件を追加</button>
+            </div>`,
         )
         .join("");
       html +=
-        '<button class="quiet-button" id="add-filter-group">' +
+        '<button class="quiet-button add-btn" id="add-filter-group">' +
         icon("plus") +
         "条件グループを追加</button>";
     } else if (state.tab === "formulas") {
-      html =
-        '<p class="settings-help">列名・四則演算・条件式と関数を使えます。ゼロ除算や欠測を含む計算結果は未計測として扱います。</p>';
+      html = sectionTitle("カスタム指標", "独自の計算式で新しい数値指標を作成します");
+      html +=
+        '<p class="settings-help">列名・四則演算・条件式と組み込み関数を使えます。ゼロ除算や欠測を含む結果は未計測として安全に処理されます。</p>';
       html += p.formulas
         .map(
           (f, i) =>
-            `<div class="formula-card">${labelField("指標の名前", input(`formulas.${i}.label`, f.label))}<p class="settings-help">列キー：<code>${esc(f.key)}</code></p>${labelField("計算のタイミング", select(`formulas.${i}.scope`, f.scope, { row: "1行ごとに計算してから集計", group: "分類ごとに集計して計算" }))}${labelField("計算式", `<textarea data-field="formulas.${i}.expression" aria-label="計算式" maxlength="500" spellcheck="false">${esc(f.expression)}</textarea>`)}<label class="field-label">式に列を挿入</label><select data-insert-formula="${i}" aria-label="式に列を挿入"><option value="">列を選択…</option>${Object.entries(
-              fieldOptions(p, { numeric: true }),
-            )
-              .filter(([key]) => key !== f.key)
-              .map(
-                ([key, label]) =>
-                  `<option value="${esc(key)}">${esc(label)} (${esc(key)})</option>`,
-              )
-              .join(
-                "",
-              )}</select><button class="quiet-button danger" data-remove-formula="${i}">この指標を削除</button></div>`,
+            `<div class="formula-card">
+              <div class="formula-card-head">
+                <span class="formula-badge">指標 ${i + 1}</span>
+                <span class="formula-key">列キー: <code>${esc(f.key)}</code></span>
+                <button class="icon-button danger" data-remove-formula="${i}" aria-label="この指標を削除">${icon("close")}</button>
+              </div>
+              ${labelField("指標の名前", input(`formulas.${i}.label`, f.label, "text", 'placeholder="例: 反応率（%）"'))}
+              ${labelField(
+                "計算のタイミング",
+                select(`formulas.${i}.scope`, f.scope, {
+                  row: "行ごと（1行ずつ計算してから集計）",
+                  group: "集計後（グループ集計値に対して計算）",
+                }),
+                "「行ごと」は各投稿で計算します。「集計後」は合計いいね/合計impなどの全体比率計算に適しています。",
+              )}
+              ${labelField(
+                "計算式",
+                `<textarea data-field="formulas.${i}.expression" aria-label="計算式" maxlength="500" spellcheck="false" placeholder="例: likes / impressions * 100">${esc(f.expression)}</textarea>`,
+              )}
+              <div class="formula-insert-row">
+                <label class="field-label" style="margin-bottom:0;">式に列を挿入</label>
+                <select data-insert-formula="${i}" aria-label="式に列を挿入">
+                  <option value="">列を選択して式に追記…</option>
+                  ${Object.entries(fieldOptions(p, { numeric: true }))
+                    .filter(([key]) => key !== f.key)
+                    .map(([key, label]) => `<option value="${esc(key)}">${esc(label)} (${esc(key)})</option>`)
+                    .join("")}
+                </select>
+              </div>
+            </div>`,
         )
         .join("");
       html +=
-        '<button class="quiet-button" id="add-formula">' +
+        '<button class="quiet-button add-btn" id="add-formula">' +
         icon("plus") +
-        '計算指標を追加</button><p class="settings-help">関数：sum / mean / median / min / max / count / abs / round / sqrt / log / log10 / coalesce<br>条件式：likes / impressions * 100 if impressions &gt; 0 else 0</p><span class="field-label">よく使う計算式から追加</span><div class="formula-examples"><button data-example="rate">反応率：likes / impressions * 100</button><button data-example="aggregate">合計から反応率：sum(likes) / sum(impressions) * 100</button><button data-example="speed">時間あたり：likes / elapsed_hours</button></div>';
+        '計算指標を追加</button>' +
+        sectionTitle("よく使う計算式テンプレート", "ワンクリックで便利な計算指標を追加できます") +
+        '<div class="formula-examples">' +
+          '<button type="button" class="formula-preset-card" data-example="rate"><strong>反応率（%）</strong><code>likes / impressions * 100</code><small>各投稿のインプレッションに対するいいねの割合</small></button>' +
+          '<button type="button" class="formula-preset-card" data-example="aggregate"><strong>合計から反応率</strong><code>sum(likes) / sum(impressions) * 100</code><small>集計全体の合計いいね／合計インプレッション割合</small></button>' +
+          '<button type="button" class="formula-preset-card" data-example="speed"><strong>時間あたりいいね</strong><code>likes / elapsed_hours</code><small>投稿からの経過時間（h）で割った反応ペース</small></button>' +
+        '</div>' +
+        '<p class="settings-help">利用可能関数: <code>sum</code>, <code>mean</code>, <code>median</code>, <code>min</code>, <code>max</code>, <code>count</code>, <code>abs</code>, <code>round</code>, <code>sqrt</code>, <code>log</code>, <code>coalesce</code><br>条件分岐例: <code>likes / impressions * 100 if impressions &gt; 0 else 0</code></p>';
     } else if (p.chart === "table") {
       html =
-        '<p class="settings-help">テーブルの表示順は「グループ・並べ替え」、投稿写真の表示は「軸・集計」で設定できます。</p>';
+        sectionTitle("テーブルの表示設定", "テーブルの表示に関する設定") +
+        (p.source !== "followers"
+          ? `<label class="toggle-label"><input type="checkbox" data-field="show_images" ${p.show_images !== false ? "checked" : ""}><span class="toggle-switch"></span>投稿写真を表示</label><p class="settings-help">表の左端に投稿写真サムネイルを表示します。タップすると作品詳細を開きます。</p>`
+          : "") +
+        sectionTitle("関連する設定タブへのショートカット", "テーブルの詳細設定はこちらから行えます") +
+        '<div class="style-shortcuts">' +
+          '<button type="button" class="style-shortcut-card" data-switch-tab="axes"><span class="shortcut-icon">' + icon("chart") + '</span><div><strong>表示列の選択</strong><small>表示するデータ項目の追加・削除</small></div></button>' +
+          '<button type="button" class="style-shortcut-card" data-switch-tab="organize"><span class="shortcut-icon">' + icon("sort") + '</span><div><strong>グループ・並べ替え</strong><small>行のまとめ方と複数条件ソート</small></div></button>' +
+          '<button type="button" class="style-shortcut-card" data-switch-tab="filters"><span class="shortcut-icon">' + icon("filter") + '</span><div><strong>絞り込みフィルター</strong><small>特定キャラや期間の絞り込み</small></div></button>' +
+        '</div>';
     } else {
+      const palette = ["#447869", "#20221e", "#f2785d", "#3b82f6", "#8b5cf6", "#eab308", "#ec4899"];
       html =
+        sectionTitle("カラーとラベル", "グラフの色調と軸見出しの設定") +
         labelField(
           "メインカラー",
-          input("style.color", p.style.color, "color"),
+          `<div class="color-picker-row">${input("style.color", p.style.color || "#447869", "color")}<div class="palette-swatches">${palette.map((c) => `<button type="button" class="swatch-btn ${p.style.color === c ? "is-selected" : ""}" data-color-swatch="${c}" style="background-color:${c};" aria-label="カラー ${c}"></button>`).join("")}</div></div>`,
+          "グラフの主線や棒の色を設定します。パレットから素早く選べます。",
         ) +
-        labelField("横軸ラベル", input("style.x_label", p.style.x_label)) +
-        labelField("縦軸ラベル", input("style.y_label", p.style.y_label)) +
-        `<div class="field-grid">${labelField("横軸の最小値", input("style.x_min", p.style.x_min, "number", 'step="any" placeholder="自動"'))}${labelField("横軸の最大値", input("style.x_max", p.style.x_max, "number", 'step="any" placeholder="自動"'))}</div><p class="settings-help">横軸範囲は数値軸に適用します。日付はデータの期間で絞り込めます。</p>` +
-        `<div class="field-grid">${labelField("縦軸の最小値", input("style.y_min", p.style.y_min, "number", 'step="any" placeholder="自動"'))}${labelField("縦軸の最大値", input("style.y_max", p.style.y_max, "number", 'step="any" placeholder="自動"'))}</div>` +
+        labelField("横軸ラベル", input("style.x_label", p.style.x_label, "text", 'placeholder="自動（未設定）"')) +
+        labelField("縦軸ラベル", input("style.y_label", p.style.y_label, "text", 'placeholder="自動（未設定）"')) +
+        sectionTitle("軸の範囲（スケール）", "数値軸の表示範囲を固定する場合に指定します") +
+        `<div class="field-grid">${labelField("横軸の最小値", input("style.x_min", p.style.x_min, "number", 'step="any" placeholder="自動"'))}${labelField("横軸の最大値", input("style.x_max", p.style.x_max, "number", 'step="any" placeholder="自動"'))}</div><p class="settings-help">横軸範囲は数値軸に適用されます。日付はデータの期間で絞り込めます。</p>` +
+        `<div class="field-grid">${labelField("縦軸の最小値", input("style.y_min", p.style.y_min, "number", 'step="any" placeholder="自動"'))}${labelField("縦軸の最大値", input("style.y_max", p.style.y_max, "number", 'step="any" placeholder="自動"'))}</div><p class="settings-help">空欄の場合はデータの最小値・最大値に合わせて自動調整されます。</p>` +
+        sectionTitle("表示オプション", "グラフ要素の表示切り替えと並び順") +
         labelField(
           "表示順",
           select("style.sort", p.style.sort, {
-            x_asc: "横軸の昇順",
-            x_desc: "横軸の降順",
-            y_desc: "値の大きい順",
-            y_asc: "値の小さい順",
+            x_asc: "横軸の昇順（古い順 / A→Z）",
+            x_desc: "横軸の降順（新しい順 / Z→A）",
+            y_desc: "値の大きい順（降順）",
+            y_asc: "値の小さい順（昇順）",
           }),
         ) +
-        `<label class="toggle-label"><input type="checkbox" data-field="style.legend" ${p.style.legend ? "checked" : ""}>凡例を表示</label><label class="toggle-label"><input type="checkbox" data-field="style.labels" ${p.style.labels ? "checked" : ""}>数値ラベルを表示（折れ線）</label>`;
+        `<label class="toggle-label"><input type="checkbox" data-field="style.legend" ${p.style.legend ? "checked" : ""}><span class="toggle-switch"></span>凡例を表示</label>` +
+        `<label class="toggle-label"><input type="checkbox" data-field="style.labels" ${p.style.labels ? "checked" : ""}><span class="toggle-switch"></span>数値ラベルを表示（折れ線）</label>`;
     }
     $("#settings-body").innerHTML = html;
     // Associate each visible field label with its native input for touch and screen readers.
@@ -1128,7 +1280,7 @@
           label = field.querySelector("label");
         if (el && label) {
           el.id = `setting-${state.tab}-${i}`;
-          el.setAttribute("aria-label", label.textContent);
+          el.setAttribute("aria-label", label.textContent.trim());
           label.htmlFor = el.id;
         }
       });
@@ -1257,9 +1409,68 @@
             p[key] = el.checked
               ? [...p[key], field]
               : p[key].filter((v) => v !== field);
+            const card = el.closest(".check-card");
+            if (card) card.classList.toggle("is-checked", el.checked);
             settingsChanged();
           }),
       );
+    $("#check-all-cols")?.addEventListener("click", () => {
+      p.columns = Object.keys(fieldOptions(p, { rowOnly: true }));
+      settingsChanged(true);
+    });
+    $("#check-none-cols")?.addEventListener("click", () => {
+      p.columns = [];
+      settingsChanged(true);
+    });
+    $("#check-default-cols")?.addEventListener("click", () => {
+      p.columns =
+        p.source === "followers"
+          ? ["date", "measured_at", "followers"]
+          : ["title", "date", "character", "likes", "retweets", "impressions"];
+      settingsChanged(true);
+    });
+    $("#check-all-y")?.addEventListener("click", () => {
+      p.y = Object.keys(
+        p.chart === "scatter"
+          ? fieldOptions(p, { numeric: true, rowOnly: true })
+          : fieldOptions(p, { numeric: true }),
+      );
+      settingsChanged(true);
+    });
+    $("#check-none-y")?.addEventListener("click", () => {
+      p.y = [];
+      settingsChanged(true);
+    });
+    $("#settings-body")
+      .querySelectorAll("[data-preset-days]")
+      .forEach((btn) => {
+        btn.onclick = () => {
+          const days = Number(btn.dataset.presetDays);
+          p.period_days = days;
+          const inputEl = $("#settings-body [data-field='period_days']");
+          if (inputEl) inputEl.value = days;
+          settingsChanged();
+        };
+      });
+    $("#settings-body")
+      .querySelectorAll("[data-color-swatch]")
+      .forEach((btn) => {
+        btn.onclick = () => {
+          const color = btn.dataset.colorSwatch;
+          p.style.color = color;
+          const inputEl = $("#settings-body [data-field='style.color']");
+          if (inputEl) inputEl.value = color;
+          settingsChanged(true);
+        };
+      });
+    $("#settings-body")
+      .querySelectorAll("[data-switch-tab]")
+      .forEach((btn) => {
+        btn.onclick = () => {
+          state.tab = btn.dataset.switchTab;
+          renderSettings();
+        };
+      });
     $("#add-filter-group")?.addEventListener("click", () => {
       p.filters.push({
         join: "and",
@@ -1507,6 +1718,7 @@
     $("#create-dialog").showModal();
   };
   $("#close-settings").onclick = () => $("#settings").close();
+  $("#done-settings")?.addEventListener("click", () => $("#settings").close());
   document
     .querySelectorAll("[data-close]")
     .forEach((el) => (el.onclick = () => $(`#${el.dataset.close}`).close()));
