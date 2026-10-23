@@ -140,8 +140,27 @@
     const [, amount, unit] = match;
     return unit === "m" ? `${amount}分後` : `${amount}時間後`;
   }
-  const id = (prefix) =>
-    `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
+  // crypto.randomUUID is unavailable outside secure contexts (plain http://IP).
+  function randomHex() {
+    const bytes = new Uint8Array(16);
+    if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+      crypto.getRandomValues(bytes);
+    } else {
+      for (let index = 0; index < bytes.length; index += 1) {
+        bytes[index] = Math.floor(Math.random() * 256);
+      }
+    }
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+      "",
+    );
+  }
+  const id = (prefix) => {
+    const uuid =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID().replaceAll("-", "")
+        : randomHex();
+    return `${prefix}_${uuid.slice(0, 12)}`;
+  };
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const storageKey = (suffix) =>
     `xart_analysis_${DEMO ? "demo" : "user"}_${state.user?.id}_${suffix}`;

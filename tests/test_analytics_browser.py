@@ -105,6 +105,21 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             browser = playwright.chromium.launch(
                 executable_path=executable, headless=True, args=["--no-sandbox"]
             )
+            # Plain http://IP is not a secure context, so crypto.randomUUID is
+            # missing there. The page must still boot and render its templates.
+            insecure = browser.new_page()
+            insecure_errors = []
+            insecure.on(
+                "pageerror", lambda error: insecure_errors.append(str(error))
+            )
+            insecure.add_init_script(
+                "Object.defineProperty(Crypto.prototype, 'randomUUID', "
+                "{ value: undefined, configurable: true });"
+            )
+            insecure.goto(url + "/analytics?demo=1")
+            insecure.wait_for_selector(".chart-svg")
+            assert not insecure_errors
+            insecure.close()
             page = browser.new_page(
                 viewport={"width": 1440, "height": 1000}, reduced_motion="reduce"
             )
