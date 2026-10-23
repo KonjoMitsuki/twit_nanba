@@ -271,16 +271,36 @@
           <span data-icon="close"></span>
         </button>
       </div>
-      <p>複数選択できます。変更は2人共通のデータに反映されます。</p>
-      <div id="character-options" class="character-options"></div>
-      <form id="add-character-form">
-        <label for="character-name">新しいキャラクター</label>
-        <div class="inline-form">
-          <input
-            id="character-name"
-            maxlength="100"
-            placeholder="キャラクター名"
-          /><button class="quiet-button">追加</button>
+      <p>
+        候補から選ぶか、名前を入力して追加できます。変更は2人共通のデータに反映されます。
+      </p>
+      <div
+        id="character-options"
+        class="character-options"
+        aria-live="polite"
+      ></div>
+      <form id="add-character-form" autocomplete="off">
+        <label for="character-name">キャラクターを検索・追加</label>
+        <div class="character-combobox">
+          <div class="inline-form">
+            <input
+              id="character-name"
+              maxlength="100"
+              placeholder="名前を入力すると候補を表示"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded="false"
+              aria-controls="character-suggestions"
+              autocomplete="off"
+            /><button class="quiet-button" type="submit">追加</button>
+          </div>
+          <ul
+            id="character-suggestions"
+            class="character-suggestions"
+            role="listbox"
+            aria-label="キャラクター候補"
+            hidden
+          ></ul>
         </div>
       </form>
       <div class="dialog-actions">
@@ -313,6 +333,7 @@
     </dialog>
     <script src="/analytics-chart-interactions.js"></script>
     <script src="/analytics-charts.js"></script>
+    <script src="/analytics-characters.js"></script>
     <script src="/analytics-table.js"></script>
     <script src="/analytics.js"></script>
   </body>

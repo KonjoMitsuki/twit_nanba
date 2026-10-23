@@ -57,6 +57,7 @@ def demo_metadata():
             for stage in config.SCHEDULE_STAGES
         ],
         "characters": CHARACTERS,
+        "character_counts": {name: 0 for name in CHARACTERS},
     }
 
 
@@ -84,6 +85,11 @@ def validate_config(payload):
 
 @router.get("/metadata")
 def metadata():
+    names = sorted(
+        set(app_db.character_names())
+        | set(load_character_map(config.CHARACTER_MAP_PATH).values())
+    )
+    counts = app_db.character_usage_counts()
     return {
         "sources": {
             source: [
@@ -96,10 +102,8 @@ def metadata():
             {"name": stage["name"], "seconds": stage["offset_sec"]}
             for stage in config.SCHEDULE_STAGES
         ],
-        "characters": sorted(
-            set(app_db.character_names())
-            | set(load_character_map(config.CHARACTER_MAP_PATH).values())
-        ),
+        "characters": names,
+        "character_counts": {name: counts.get(name, 0) for name in names},
     }
 
 

@@ -268,3 +268,24 @@ def test_init_db_migrates_table_without_character_column(tmp_path):
     with sqlite3.connect(db_path) as conn:
         columns = [row[1] for row in conn.execute("PRAGMA table_info(artworks)").fetchall()]
     assert "character" in columns
+
+
+def test_character_usage_counts_count_artworks(tmp_path):
+    db_path = str(tmp_path / "app.db")
+    for index, characters in enumerate(
+        [["初音ミク", "巡音ルカ"], ["初音ミク"], ["鏡音リン"]]
+    ):
+        app_db.create_artwork(
+            tweet_id=str(index),
+            url=f"https://example.com/{index}",
+            title=str(index),
+            posted_at="2026-10-01T00:00:00+00:00",
+            characters=characters,
+            db_path=db_path,
+        )
+
+    assert app_db.character_usage_counts(db_path) == {
+        "初音ミク": 2,
+        "巡音ルカ": 1,
+        "鏡音リン": 1,
+    }

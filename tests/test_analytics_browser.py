@@ -120,6 +120,51 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             insecure.wait_for_selector(".chart-svg")
             assert not insecure_errors
             insecure.close()
+            character_page = browser.new_page(
+                viewport={"width": 1440, "height": 1000}, reduced_motion="reduce"
+            )
+            character_errors = []
+            character_page.on(
+                "pageerror", lambda error: character_errors.append(str(error))
+            )
+            character_page.goto(url + "/analytics?demo=1")
+            character_page.wait_for_selector(".chart-svg")
+            character_page.locator(
+                "#view-list button", has_text="作品テーブル"
+            ).click()
+            character_page.wait_for_selector(".character-cell")
+            character_page.locator(".character-cell").first.click()
+            character_page.wait_for_selector("#character-dialog[open]")
+            suggestions = character_page.locator("#character-suggestions li")
+            assert 0 < suggestions.count() <= 5
+            suggestion_name = suggestions.first.locator("span").inner_text()
+            character_page.fill("#character-name", suggestion_name)
+            character_page.wait_for_function(
+                "document.querySelectorAll('#character-suggestions li').length === 1"
+            )
+            character_page.locator("#character-suggestions li").first.click()
+            assert (
+                character_page.locator(
+                    ".character-chip-selected", has_text=suggestion_name
+                ).count()
+                == 1
+            )
+            character_page.fill("#character-name", "検証キャラ")
+            character_page.locator("#add-character-form button").click()
+            assert (
+                character_page.locator(
+                    ".character-chip-selected", has_text="検証キャラ"
+                ).count()
+                == 1
+            )
+            character_page.keyboard.press("Escape")
+            assert not character_page.locator("#character-suggestions").is_visible()
+            character_page.keyboard.press("Escape")
+            character_page.wait_for_function(
+                "!document.querySelector('#character-dialog').open"
+            )
+            assert not character_errors
+            character_page.close()
             page = browser.new_page(
                 viewport={"width": 1440, "height": 1000}, reduced_motion="reduce"
             )

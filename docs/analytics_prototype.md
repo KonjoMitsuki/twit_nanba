@@ -88,6 +88,8 @@ APP_DB_PATH=./app.db PYTHONPATH=. python -m uvicorn api.main:app --host 127.0.0.
 
 タグ対応表による自動入力を、新着検知、収集、手動URL登録、Notion移行の各経路で複数キャラに対応させています。`--character` の明示指定、作品詳細・テーブルでの手動設定は自動処理より優先します。手動で空にした状態も保護します。既存DBの移行時に入力済みだったキャラは手動設定として保護します。
 
+テーブルのキャラクター編集では、選択中のキャラクターをチップで表示します。未入力時の候補は使用作品数が多い順に最大5件を表示し、入力欄に文字を入れると一致する候補（前方一致・部分一致）を最大5件に絞って表示します。候補にない名前は入力欄から新規追加できます。
+
 テーブルでは登録済みキャラを複数選択でき、その場で新規追加もできます。元データのPATCH APIはキャラ以外の項目を拒否します。キャラの変更は2人共通のデータへ反映し、分析ビュー設定は個人のままです。
 
 | 配分 | 件数・合計 | 平均・分位数 |
@@ -101,7 +103,7 @@ APP_DB_PATH=./app.db PYTHONPATH=. python -m uvicorn api.main:app --host 127.0.0.
 ## API
 
 - `GET/POST /api/profiles`、`PATCH /api/profiles/{id}`
-- `GET /api/analytics/metadata`
+- `GET /api/analytics/metadata`（キャラクター候補と使用作品数 `character_counts` を含む）
 - `POST /api/analytics/query`
 - `GET/POST /api/analytics/views`
 - `PATCH/DELETE /api/analytics/views/{id}`
@@ -146,6 +148,7 @@ pip install pytest
 PYTHONPATH=. python -m pytest -q
 node tests/test_analytics_table.cjs
 node tests/test_analytics_chart_interactions.cjs
+node tests/test_analytics_characters.cjs
 ```
 
 Chromium/Playwrightブラウザーが利用できる環境では、ブラウザーテストも実行できます。

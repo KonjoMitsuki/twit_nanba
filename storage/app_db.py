@@ -474,6 +474,20 @@ def character_names(db_path=None):
         return [row[0] for row in connection.execute("SELECT name FROM characters ORDER BY name")]
 
 
+def character_usage_counts(db_path=None):
+    """Return how many artworks use each character."""
+    init_db(db_path)
+    with _connect(db_path) as connection:
+        return {
+            row["character"]: row["count"]
+            for row in connection.execute(
+                """SELECT character, COUNT(*) AS count
+                FROM artwork_characters
+                GROUP BY character"""
+            )
+        }
+
+
 def auto_fill_characters(artwork_id, names, db_path=None):
     """Atomically protect manual selections (including an intentional empty set)."""
     init_db(db_path)

@@ -154,6 +154,28 @@ def test_character_api_is_public_but_rejects_non_character_writes(client):
     assert client.patch(url, json={"characters": []}).json()["characters"] == []
 
 
+def test_metadata_includes_character_usage_counts(client):
+    for index, characters in enumerate(
+        [["初音ミク", "巡音ルカ"], ["初音ミク"], ["鏡音リン"]]
+    ):
+        app_db.create_artwork(
+            tweet_id=f"metadata-{index}",
+            url=f"https://example.com/metadata-{index}",
+            title=f"Metadata {index}",
+            posted_at="2026-10-01T00:00:00+00:00",
+            characters=characters,
+        )
+
+    metadata = client.get(
+        "/api/analytics/metadata", headers=profile_headers(client)
+    ).json()
+
+    assert metadata["character_counts"]["初音ミク"] == 2
+    assert metadata["character_counts"]["巡音ルカ"] == 1
+    assert metadata["character_counts"]["鏡音リン"] == 1
+    assert "初音ミク" in metadata["characters"]
+
+
 def test_invalid_formulas_and_stages_are_still_rejected(client):
     headers = profile_headers(client)
     for panel in [

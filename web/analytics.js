@@ -4,6 +4,9 @@
   const esc = AnalysisCharts.escape,
     fmt = AnalysisCharts.format;
   const DEMO = new URLSearchParams(location.search).get("demo") === "1";
+  const characterSuggestionLimit = AnalysisCharacters.LIMIT;
+  let characterSuggestionNames = [];
+  let characterActiveSuggestion = -1;
   const icons = {
     chart: '<path d="M4 18V6m0 12h16M7 14l4-5 4 3 5-7"/>',
     calendar:
@@ -2470,50 +2473,165 @@
           }),
       );
   }
-  function renderCharacterOptions() {
-    const names = [
+  function characterNames() {
+    return [
       ...new Set([
         ...state.metadata.characters,
         ...state.newCharacters,
         ...state.characterSelection,
       ]),
-    ].sort((a, b) => a.localeCompare(b, "ja"));
-    $("#character-options").innerHTML = names
-      .map(
-        (name) =>
-          `<label><input type="checkbox" value="${esc(name)}" ${state.characterSelection.includes(name) ? "checked" : ""}>${esc(name)}</label>`,
-      )
+    ];
+  }
+  function suggestCharacters(query) {
+    return AnalysisCharacters.suggest(characterNames(), {
+      selected: state.characterSelection,
+      counts: state.metadata.character_counts || {},
+      query,
+      max: characterSuggestionLimit,
+    });
+  }
+  function hideCharacterSuggestions() {
+    characterSuggestionNames = [];
+    characterActiveSuggestion = -1;
+    const list = $("#character-suggestions");
+    list.innerHTML = "";
+    list.hidden = true;
+    $("#character-name").setAttribute("aria-expanded", "false");
+    $("#character-name").removeAttribute("aria-activedescendant");
+  }
+  function renderCharacterSuggestions() {
+    const input = $("#character-name");
+    const list = $("#character-suggestions");
+    characterSuggestionNames = suggestCharacters(input.value);
+    if (!characterSuggestionNames.length) {
+      hideCharacterSuggestions();
+      return;
+    }
+    if (characterActiveSuggestion >= characterSuggestionNames.length)
+      characterActiveSuggestion = -1;
+    list.innerHTML = characterSuggestionNames
+      .map((name, index) => {
+        const count = Number(state.metadata.character_counts?.[name]) || 0;
+        return `<li id="character-suggestion-${index}" role="option" aria-selected="${index === characterActiveSuggestion}" data-character-suggestion="${esc(name)}"><span>${esc(name)}</span>${count ? `<small>${count}作品</small>` : ""}</li>`;
+      })
       .join("");
-    $("#character-options")
-      .querySelectorAll("input")
-      .forEach(
-        (el) =>
-          (el.onchange = () => {
-            state.characterSelection = el.checked
-              ? [...state.characterSelection, el.value]
-              : state.characterSelection.filter((name) => name !== el.value);
-          }),
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    if (characterActiveSuggestion >= 0) {
+      input.setAttribute(
+        "aria-activedescendant",
+        `character-suggestion-${characterActiveSuggestion}`,
       );
+    } else input.removeAttribute("aria-activedescendant");
+  }
+  function renderCharacterOptions() {
+    const host = $("#character-options");
+    host.innerHTML = state.characterSelection.length
+      ? state.characterSelection
+          .map(
+            (name) =>
+              `<span class="character-chip character-chip-selected"><span>${esc(name)}</span><button type="button" class="character-chip-remove" data-remove-character="${esc(name)}" aria-label="${esc(name)}を選択から外す">×</button></span>`,
+          )
+          .join("")
+      : '<span class="character-empty">未選択</span>';
+    host.querySelectorAll("[data-remove-character]").forEach((button) => {
+      button.onclick = () => {
+        state.characterSelection = state.characterSelection.filter(
+          (name) => name !== button.dataset.removeCharacter,
+        );
+        renderCharacterOptions();
+        renderCharacterSuggestions();
+        $("#character-name").focus();
+      };
+    });
+  }
+  function addCharacter(value) {
+    const name = String(value ?? "").trim();
+    if (!name) return;
+    const key = AnalysisCharacters.normalize(name);
+    const existing = characterNames().find(
+      (item) => AnalysisCharacters.normalize(item) === key,
+    );
+    const resolved = existing || name;
+    if (!existing && !state.newCharacters.includes(resolved))
+      state.newCharacters.push(resolved);
+    if (!state.characterSelection.includes(resolved))
+      state.characterSelection.push(resolved);
+    $("#character-name").value = "";
+    characterActiveSuggestion = -1;
+    renderCharacterOptions();
+    renderCharacterSuggestions();
+    $("#character-name").focus();
   }
   function openCharacters(row) {
     state.characterRow = row;
-    state.characterSelection = [...row.characters];
+    state.characterSelection = [...new Set(row.characters || [])];
     state.newCharacters = [];
     $("#character-status").textContent = "";
     $("#character-name").value = "";
     renderCharacterOptions();
+    renderCharacterSuggestions();
     $("#character-dialog").showModal();
   }
   $("#add-character-form").onsubmit = (event) => {
     event.preventDefault();
-    const name = $("#character-name").value.trim();
-    if (!name) return;
-    state.newCharacters.push(name);
-    if (!state.characterSelection.includes(name))
-      state.characterSelection.push(name);
-    $("#character-name").value = "";
-    renderCharacterOptions();
+    addCharacter($("#character-name").value);
   };
+  $("#character-name").addEventListener("input", () => {
+    characterActiveSuggestion = -1;
+    renderCharacterSuggestions();
+  });
+  $("#character-name").addEventListener("focus", renderCharacterSuggestions);
+  $("#character-name").addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (!characterSuggestionNames.length) renderCharacterSuggestions();
+      if (!characterSuggestionNames.length) return;
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      characterActiveSuggestion =
+        characterActiveSuggestion < 0
+          ? step > 0
+            ? 0
+            : characterSuggestionNames.length - 1
+          : (characterActiveSuggestion +
+              step +
+              characterSuggestionNames.length) %
+            characterSuggestionNames.length;
+      renderCharacterSuggestions();
+      document
+        .getElementById(`character-suggestion-${characterActiveSuggestion}`)
+        ?.scrollIntoView({ block: "nearest" });
+    } else if (event.key === "Enter") {
+      if (
+        characterActiveSuggestion >= 0 &&
+        characterSuggestionNames[characterActiveSuggestion]
+      ) {
+        event.preventDefault();
+        addCharacter(characterSuggestionNames[characterActiveSuggestion]);
+      }
+    } else if (
+      event.key === "Escape" &&
+      !$("#character-suggestions").hidden
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      hideCharacterSuggestions();
+    }
+  });
+  $("#character-suggestions").addEventListener("mousedown", (event) =>
+    event.preventDefault(),
+  );
+  $("#character-suggestions").addEventListener("click", (event) => {
+    const option = event.target.closest("[data-character-suggestion]");
+    if (option) addCharacter(option.dataset.characterSuggestion);
+  });
+  document.addEventListener("click", (event) => {
+    const dialog = $("#character-dialog");
+    if (!dialog.open || !event.composedPath().includes(dialog)) return;
+    if (event.composedPath().includes($("#add-character-form"))) return;
+    if (!$("#character-suggestions").hidden) hideCharacterSuggestions();
+  });
+  $("#character-dialog").addEventListener("close", hideCharacterSuggestions);
   $("#suggest-characters").onclick = async () => {
     try {
       const row = state.characterRow;
@@ -2526,6 +2644,7 @@
           ).characters;
       state.characterSelection = [...new Set(names)];
       renderCharacterOptions();
+      renderCharacterSuggestions();
       $("#character-status").textContent = names.length
         ? "候補を入力しました。保存すると反映されます。"
         : "対応するタグがありません。";
@@ -2551,6 +2670,18 @@
       state.metadata.characters = [
         ...new Set([...state.metadata.characters, ...names]),
       ];
+      const previous = new Set(row.characters || []);
+      const counts =
+        state.metadata.character_counts ||
+        (state.metadata.character_counts = {});
+      previous.forEach((name) => {
+        if (!names.includes(name))
+          counts[name] = Math.max(0, (Number(counts[name]) || 0) - 1);
+      });
+      names.forEach((name) => {
+        if (!previous.has(name))
+          counts[name] = (Number(counts[name]) || 0) + 1;
+      });
       $("#character-dialog").close();
       renderPanels();
       toast("キャラクターを保存しました");

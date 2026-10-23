@@ -1835,22 +1835,80 @@ dialog::backdrop {
 }
 .character-options {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin: 20px 0;
+  margin: 12px 0 18px;
+  min-height: 34px;
 }
-.character-options label {
-  display: flex;
+.character-options .character-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 10px;
-  border: 1px solid var(--line);
+  gap: 6px;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 4px 4px 4px 10px;
   border-radius: 4px;
-  min-height: 44px;
+  font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.character-chip-remove {
+  display: inline-grid;
+  flex: 0 0 22px;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  line-height: 1;
+}
+.character-chip-remove:hover {
+  background: rgb(0 0 0 / 6%);
+}
+.character-empty {
+  color: var(--muted);
   font-size: 12px;
 }
-.character-options input {
-  accent-color: var(--accent);
+.character-combobox {
+  position: relative;
+}
+.character-suggestions {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  box-shadow: 0 6px 18px #172b2212;
+  max-height: 252px;
+  overflow-y: auto;
+}
+.character-suggestions li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  padding: 6px 9px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.character-suggestions li:hover,
+.character-suggestions li[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+.character-suggestions li small {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.character-suggestions li span {
+  overflow-wrap: anywhere;
 }
 .inline-form {
   display: flex;
