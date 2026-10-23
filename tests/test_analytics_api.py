@@ -254,3 +254,39 @@ def test_scatter_can_be_saved_and_queried_without_login(client):
         ).status_code
         == 422
     )
+
+
+def test_axis_tick_settings_are_saved_and_validate_positive_intervals(client):
+    headers = profile_headers(client)
+    style = {"x_tick_interval": 6, "y_tick_interval": 25, "x_tick_unit": "hour"}
+    created = client.post(
+        "/api/analytics/views",
+        headers=headers,
+        json={
+            "name": "目盛り",
+            "config": {"panels": [{"x": "measured_at", "style": style}]},
+        },
+    )
+    assert created.status_code == 201
+    saved = client.get("/api/analytics/views", headers=headers).json()["views"][0]
+    for key, value in style.items():
+        assert saved["config"]["panels"][0]["style"][key] == value
+    for invalid in [
+        {"x_tick_interval": 0},
+        {"y_tick_interval": -1},
+        {"x_tick_unit": "invalid"},
+    ]:
+        assert (
+            client.post(
+                "/api/analytics/query", headers=headers, json={"style": invalid}
+            ).status_code
+            == 422
+        )
+    assert (
+        client.post(
+            "/api/analytics/query",
+            headers=headers,
+            json={"style": {"x_tick_interval": None, "y_tick_interval": None}},
+        ).status_code
+        == 200
+    )

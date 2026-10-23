@@ -37,6 +37,9 @@ class Appearance(StrictModel):
     x_max: float | None = None
     y_min: float | None = None
     y_max: float | None = None
+    x_tick_interval: float | None = Field(default=None, gt=0)
+    y_tick_interval: float | None = Field(default=None, gt=0)
+    x_tick_unit: Literal["day", "hour", "minute", "second"] = "day"
     sort: Literal["x_asc", "x_desc", "y_desc", "y_asc"] = "x_asc"
 
     @model_validator(mode="after")

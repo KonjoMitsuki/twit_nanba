@@ -152,9 +152,7 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
                 "button", name="投稿後のいいね推移の設定", exact=True
             ).click()
             page.get_by_role("button", name="計算式", exact=True).click()
-            page.get_by_role(
-                "button", name="反応率：likes / impressions * 100", exact=True
-            ).click()
+            page.locator('[data-example="rate"]').click()
             assert (
                 page.get_by_label("計算式", exact=True).input_value()
                 == "likes / impressions * 100"
@@ -180,7 +178,8 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.get_by_role("button", name="作品テーブルの設定", exact=True).click()
             page.get_by_role("button", name="軸・集計", exact=True).click()
-            page.get_by_label("投稿写真を表示", exact=True).uncheck()
+            page.get_by_label("投稿写真を表示", exact=True).locator("..").click()
+            assert not page.get_by_label("投稿写真を表示", exact=True).is_checked()
             page.wait_for_function(
                 "document.querySelector('#save-status').textContent === 'すべて保存済み'"
             )
@@ -367,6 +366,10 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             another.get_by_role("button", name="見た目", exact=True).click()
             another.get_by_label("横軸の最小値", exact=True).fill("0")
             another.get_by_label("縦軸の最大値", exact=True).fill("40")
+            another.get_by_label("横軸の目盛り間隔", exact=True).select_option("manual")
+            another.get_by_label("横軸の目盛り間隔の値", exact=True).fill("5")
+            another.get_by_label("縦軸の目盛り間隔", exact=True).select_option("manual")
+            another.get_by_label("縦軸の目盛り間隔の値", exact=True).fill("10")
             another.wait_for_function(
                 "document.querySelector('#save-status').textContent === 'すべて保存済み'"
             )
@@ -380,7 +383,22 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             assert (
                 another.get_by_label("縦軸の最大値", exact=True).input_value() == "40"
             )
+            assert (
+                another.get_by_label("横軸の目盛り間隔", exact=True).input_value()
+                == "manual"
+            )
+            assert (
+                another.get_by_label("横軸の目盛り間隔の値", exact=True).input_value()
+                == "5"
+            )
+            assert (
+                another.get_by_label("縦軸の目盛り間隔の値", exact=True).input_value()
+                == "10"
+            )
+            another.get_by_label("横軸の目盛り間隔", exact=True).select_option("auto")
+            assert another.get_by_label("横軸の目盛り間隔の値", exact=True).count() == 0
             another.keyboard.press("Escape")
+            another.wait_for_selector(".scatter-point")
             another.locator('[data-tip^="broken"]').click()
             assert another.evaluate(
                 "document.documentElement.scrollWidth <= innerWidth"

@@ -147,6 +147,9 @@
         color: "#447869",
         legend: true,
         labels: false,
+        x_tick_interval: null,
+        y_tick_interval: null,
+        x_tick_unit: "day",
         x_label: "",
         y_label: "",
         y_min: null,
@@ -1271,6 +1274,51 @@
         `<label class="toggle-label"><input type="checkbox" data-field="style.legend" ${p.style.legend ? "checked" : ""}><span class="toggle-switch"></span>凡例を表示</label>` +
         `<label class="toggle-label"><input type="checkbox" data-field="style.labels" ${p.style.labels ? "checked" : ""}><span class="toggle-switch"></span>数値ラベルを表示（折れ線）</label>`;
     }
+    if (state.tab === "style" && !["table", "pie"].includes(p.chart)) {
+      const temporal = state.metadata.sources[p.source].some(
+          (f) => f.key === p.x && f.type === "date",
+        ),
+        categorical =
+          p.chart === "box" ||
+          state.metadata.sources[p.source].some(
+            (f) => f.key === p.x && !["number", "date"].includes(f.type),
+          );
+      html += '<span class="field-label">目盛りラベルの間隔</span>';
+      for (const [axis, label] of [
+        ["x", "横軸"],
+        ["y", "縦軸"],
+      ]) {
+        const interval = p.style[`${axis}_tick_interval`];
+        html += labelField(
+          `${label}の目盛り間隔`,
+          `<select data-tick-mode="${axis}"><option value="auto" ${interval == null ? "selected" : ""}>Auto</option><option value="manual" ${interval != null ? "selected" : ""}>数値指定</option></select>`,
+        );
+        if (interval != null)
+          html += labelField(
+            `${label}の目盛り間隔の値`,
+            input(
+              `style.${axis}_tick_interval`,
+              interval,
+              "number",
+              axis === "x" && categorical
+                ? 'min="1" step="1"'
+                : 'min="0" step="any"',
+            ),
+          );
+        if (axis === "x" && temporal && !categorical && interval != null)
+          html += labelField(
+            "横軸の間隔の単位",
+            select("style.x_tick_unit", p.style.x_tick_unit || "day", {
+              day: "日",
+              hour: "時間",
+              minute: "分",
+              second: "秒",
+            }),
+          );
+      }
+      html +=
+        '<p class="settings-help">数値軸は値の差、分類軸は項目数で指定します。ズーム・移動に合わせて目盛りも更新します。極端に細かい間隔は描画時に一部を省略します。</p>';
+    }
     $("#settings-body").innerHTML = html;
     // Associate each visible field label with its native input for touch and screen readers.
     $("#settings-body")
@@ -1296,6 +1344,15 @@
   function wireSettings() {
     const p = currentPanel();
     $("#settings-body")
+      .querySelectorAll("[data-tick-mode]")
+      .forEach((el) => {
+        el.onchange = () => {
+          p.style[`${el.dataset.tickMode}_tick_interval`] =
+            el.value === "auto" ? null : 1;
+          settingsChanged(true);
+        };
+      });
+    $("#settings-body")
       .querySelectorAll("[data-field]")
       .forEach((el) => {
         const handler = () => {
@@ -1308,7 +1365,14 @@
               ? el.checked
               : el.type === "number"
                 ? el.value === ""
-                  ? ["x_min", "x_max", "y_min", "y_max"].includes(property)
+                  ? [
+                      "x_min",
+                      "x_max",
+                      "y_min",
+                      "y_max",
+                      "x_tick_interval",
+                      "y_tick_interval",
+                    ].includes(property)
                     ? null
                     : 0
                   : Number(el.value)
