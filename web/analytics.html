@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>分析 | X Art Analytics</title>
+    <title>データ分析 | twit_nanba</title>
     <link rel="stylesheet" href="/css/analytics.css" />
   </head>
   <body>
@@ -12,7 +12,7 @@
       <aside class="sidebar" aria-label="ワークスペース">
         <a class="workspace-brand" href="/"
           ><span class="brand-mark">A</span
-          ><span>Art workspace<small>X Art Analytics</small></span></a
+          ><span>twit_nanba<small>X Art Analytics</small></span></a
         >
         <nav class="primary-nav" aria-label="ページ">
           <a href="/"><span data-icon="calendar"></span>カレンダー</a
@@ -75,7 +75,7 @@
               <p class="eyebrow">EXPLORE YOUR ART</p>
               <h1>データ分析</h1>
               <p class="page-description">
-                気になる視点を、あなただけのビューに。
+                見たいデータを、自分好みに。
               </p>
             </div>
             <button id="new-view" class="primary-button">
@@ -85,16 +85,21 @@
 
           <section id="analysis-content" hidden>
             <div class="view-toolbar">
-              <div class="view-title-wrap">
-                <span id="view-icon" data-icon="dashboard"></span
-                ><input
-                  id="view-name"
-                  aria-label="ビュー名"
-                  maxlength="100"
-                /><span id="layout-label" class="soft-badge"></span
-                ><span id="view-lock-state" class="soft-badge lock-badge" hidden
-                  ><span data-icon="lock"></span>ロック中</span
-                >
+              <div class="view-identity">
+                <p class="view-caption">
+                  現在のビュー <span class="view-edit-state">編集可能</span>
+                </p>
+                <div class="view-title-wrap">
+                  <span id="view-icon" data-icon="dashboard"></span
+                  ><input
+                    id="view-name"
+                    aria-label="ビュー名"
+                    maxlength="100"
+                  /><span id="layout-label" class="soft-badge"></span
+                  ><span id="view-lock-state" class="soft-badge lock-badge" hidden
+                    ><span data-icon="lock"></span>ロック中</span
+                  >
+                </div>
               </div>
               <div class="view-actions">
                 <label class="compact-select"
@@ -127,6 +132,10 @@
                 </button>
               </div>
             </div>
+            <p class="view-edit-hint">
+              <span data-icon="info"></span>
+              上下ボタンで並べ替え。変更は「保存」で確定。
+            </p>
             <div
               id="single-tabs"
               class="single-tabs"
@@ -237,7 +246,7 @@
     >
       <div class="dialog-head">
         <div>
-          <p class="eyebrow">ADD PANEL · パネル追加</p>
+          <p class="eyebrow">ADD PANEL</p>
           <h2 id="panel-type-title">表・グラフを追加</h2>
         </div>
         <button
@@ -249,7 +258,7 @@
         </button>
       </div>
       <p class="panel-type-lead">
-        作りたいものから選んでください。あとから設定で自由に変更できます。
+        見たいデータに合う形式を選びましょう。あとから設定で変更できます。
       </p>
       <div id="panel-types" class="template-grid panel-type-grid"></div>
     </dialog>
