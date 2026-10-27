@@ -10,6 +10,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from storage import app_db
 
 
 pytestmark = pytest.mark.skipif(
@@ -25,6 +26,21 @@ def review_server(tmp_path_factory):
         port = probe.getsockname()[1]
     env = os.environ.copy()
     env["APP_DB_PATH"] = str(tmp_path_factory.mktemp("analytics-layout") / "test.db")
+    for index, day in enumerate(["2026-09-21", "2026-10-21", "2026-10-22"]):
+        artwork = app_db.create_artwork(
+            tweet_id=f"hig-{index}", url=f"https://example.test/{index}",
+            title=f"検証用イラスト {index}", posted_at=f"{day}T12:00:00+09:00",
+            image_urls=["/demo-artwork.svg", "/demo-artwork.svg?second"],
+            db_path=env["APP_DB_PATH"],
+        )
+        for stage, elapsed, likes in [("5m", 300, 20), ("24h", 86400, 100 + index * 30)]:
+            app_db.add_metric_snapshot(
+                artwork, stage=stage, elapsed_seconds=elapsed,
+                measured_at=f"{day}T13:00:00+09:00", likes=likes,
+                retweets=index * 3, impressions=1000, db_path=env["APP_DB_PATH"],
+            )
+    for day, count in [("2026-09-30", 1000), ("2026-10-01", 1005), ("2026-10-21", 1010)]:
+        app_db.add_account_metric(count, f"{day}T12:00:00+09:00", db_path=env["APP_DB_PATH"])
     for key in ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_ALLOWED_EMAILS"]:
         env[key] = ""
     process = subprocess.Popen(
@@ -118,7 +134,7 @@ def test_customized_layout_save_switch_lock_and_settings(review_server, review_b
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     try:
-        page.goto(review_server + "/analytics?demo=1")
+        page.goto(review_server + "/analytics?demo=1#views")
         expect(page.locator(".chart-svg")).to_have_count(4)
         expect(page.locator("#view-lock-state")).to_be_hidden()
         expect(page.locator(".view-edit-state")).to_be_visible()
@@ -187,7 +203,11 @@ def test_customized_layout_save_switch_lock_and_settings(review_server, review_b
         expected_ids = page.locator(".panel").evaluate_all("els => els.map(el => el.dataset.panel)")
         page.locator("#duplicate-view").click()
         expect(page.locator("#view-name")).to_have_value("私のカスタム分析 のコピー")
+        if width <= 760:
+            page.locator(".mobile-menu-button").click()
         page.locator("#view-list button").first.click()
+        if width <= 760:
+            page.locator(".mobile-menu-button").click()
         page.locator(f'#view-list [data-view="{original_view}"]').click()
         expect(page.locator("#view-name")).to_have_value("私のカスタム分析")
         expect(page.locator(".panel")).to_have_count(7)
@@ -256,3 +276,140 @@ def test_customized_layout_save_switch_lock_and_settings(review_server, review_b
         assert not errors
     finally:
         context.close()
+
+
+@pytest.mark.parametrize("width,height", [(1540, 930), (1024, 900), (768, 1024), (374, 852), (320, 740)])
+def test_apple_dashboard_calendar_and_detail(review_server, review_browser, width, height):
+    from playwright.sync_api import expect
+
+    context = review_browser.new_context(viewport={"width": width, "height": height}, has_touch=width <= 760)
+    page = context.new_page()
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    try:
+        page.goto(review_server + "/analytics?month=2026-10")
+        expect(page.locator(".metric-posts strong")).to_have_text("2")
+        expect(page.locator(".metric-likes strong")).to_have_text("290")
+        expect(page.locator(".metric-reposts strong")).to_have_text("9")
+        expect(page.locator(".metric-followers strong")).to_have_text("+10")
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert page.locator(".brand-mark img").evaluate("img => img.complete && img.naturalWidth === 34")
+        if width <= 760:
+            expect(page.locator(".bottom-nav")).to_be_visible()
+            expect(page.locator(".metric-posts")).to_be_hidden()
+            page.locator(".mobile-menu-button").click()
+            expect(page.locator(".sidebar")).to_be_visible()
+            page.keyboard.press("Escape")
+            expect(page.locator(".sidebar")).to_be_hidden()
+        page.locator("#overview-settings").click()
+        page.get_by_role("switch", name="いいね推移", exact=True).uncheck()
+        page.locator("#overview-preferences button[type=submit]").click()
+        expect(page.locator("#overview-likes")).to_be_hidden()
+        page.reload()
+        expect(page.locator("#overview-likes")).to_be_hidden()
+        page.locator("#overview-settings").click()
+        page.get_by_role("switch", name="いいね推移", exact=True).check()
+        page.locator("#overview-lock").click()
+        expect(page.get_by_role("switch", name="いいね推移", exact=True)).to_be_disabled()
+        page.locator("#overview-preferences button[type=submit]").click()
+        page.locator("#overview-month").fill("2026-09")
+        expect(page.locator(".metric-likes strong")).to_have_text("100")
+        page.locator("#overview-month").fill("2026-10")
+        expect(page.locator(".metric-likes strong")).to_have_text("290")
+        output_dir = os.getenv("ANALYTICS_REDESIGN_ARTIFACTS")
+        if output_dir:
+            output = Path(output_dir)
+            output.mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(output / f"apple-dashboard-{width}.png"), full_page=True)
+
+        page.goto(review_server + "/?month=2026-10")
+        expect(page.locator("#month-title")).to_have_text("2026年10月")
+        if width <= 760:
+            page.locator('#calendar-compact [data-day="2026-10-21"]').click()
+            expect(page.locator(".day-dialog")).to_be_visible()
+            expect(page.locator(".day-dialog .highlight-post")).to_have_count(1)
+            page.locator(".day-dialog .highlight-post").click()
+        else:
+            page.locator(".art-card").first.click()
+        page.wait_for_selector(".carousel-image")
+        expect(page.locator(".carousel-position")).to_have_text("1 / 2")
+        page.get_by_role("button", name="次の画像", exact=True).click()
+        expect(page.locator(".carousel-position")).to_have_text("2 / 2")
+        for metric in ["retweets", "impressions", "likes"]:
+            page.locator(f'[data-metric="{metric}"]').click()
+            expect(page.locator(f'[data-metric="{metric}"]')).to_have_class("active")
+            page.locator('[data-mode="delta"]').click()
+            expect(page.locator(".bar-chart")).to_be_visible()
+            page.locator('[data-mode="absolute"]').click()
+            expect(page.locator(".line-chart")).to_be_visible()
+        point = page.locator(".chart-point").first
+        point.focus()
+        expect(page.locator("#chart .chart-tooltip")).to_be_visible()
+        expect(page.locator("#chart .chart-tooltip")).to_contain_text("20")
+        page.locator("[data-x-axis-label]").click()
+        expect(page.locator(".chart-legend")).to_contain_text("計測時間")
+        page.locator("[data-x-axis-label]").click()
+        expect(page.locator(".chart-legend")).to_contain_text("経過時間")
+        if width <= 760:
+            point = page.locator(".chart-point").first
+            point.tap(force=True)
+            expect(page.locator("#chart .chart-tooltip")).to_be_visible()
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        if output_dir:
+            page.screenshot(path=str(output / f"apple-detail-{width}.png"), full_page=True)
+        assert not errors
+    finally:
+        context.close()
+
+
+def test_apple_overview_missing_data_and_failed_month(review_server, review_browser):
+    from playwright.sync_api import expect
+
+    page = review_browser.new_page()
+    try:
+        page.goto(review_server + "/analytics?month=2026-10")
+        expect(page.locator(".metric-likes strong")).to_have_text("290")
+        page.route("**/api/calendar?year=2026&month=11", lambda route: route.fulfill(status=503, json={"detail": "unavailable"}))
+        page.locator("#overview-month").fill("2026-11")
+        expect(page.locator("#overview-error")).to_be_visible()
+        expect(page.locator(".overview-metric")).to_have_count(0)
+        page.unroute("**/api/calendar?year=2026&month=11")
+        page.locator("#overview-refresh").click()
+        expect(page.locator(".metric-posts strong")).to_have_text("0")
+        expect(page.locator("#overview-highlights")).to_contain_text("投稿はありません")
+        page.route("**/api/calendar?year=2026&month=10", lambda route: route.fulfill(json={
+            "year": 2026, "month": 10,
+            "summary": {"followers": None, "followers_delta": None},
+            "days": [{"date": "2026-10-21", "followers_delta": None, "artworks": [{
+                "id": "missing", "title": "未計測", "posted_at": "2026-10-21T12:00:00+09:00",
+                "image_url": None, "likes": None, "retweets": None,
+            }]}],
+        }))
+        page.locator("#overview-month").fill("2026-10")
+        expect(page.locator(".metric-likes strong")).to_have_text("—")
+        expect(page.locator(".metric-followers strong")).to_have_text("—")
+        expect(page.locator("#overview-likes-chart")).to_contain_text("計測データはありません")
+    finally:
+        page.close()
+
+
+def test_detail_delta_preserves_missing_measurements(review_server, review_browser):
+    from playwright.sync_api import expect
+
+    calendar = httpx.get(review_server + "/api/calendar?year=2026&month=10", trust_env=False).json()
+    artwork_id = next(day["artworks"][0]["id"] for day in calendar["days"] if day["artworks"])
+    page = review_browser.new_page(viewport={"width": 374, "height": 852})
+    try:
+        page.route(f"**/api/artworks/{artwork_id}/metrics", lambda route: route.fulfill(json={"points": [
+            {"stage": "5m", "measured_at": "2026-10-21T03:05:00Z", "likes": None},
+            {"stage": "15m", "measured_at": "2026-10-21T03:15:00Z", "likes": 50},
+            {"stage": "30m", "measured_at": "2026-10-21T03:30:00Z", "likes": 80},
+        ]}))
+        page.goto(review_server + f"/artworks/{artwork_id}")
+        page.locator('[data-mode="delta"]').click()
+        expect(page.locator(".chart-value")).to_contain_text("30")
+        assert page.locator(".bar").evaluate_all("bars => bars.slice(0, 2).every(bar => getComputedStyle(bar).visibility === 'hidden')")
+        page.locator(".bar-wrap").nth(1).dispatch_event("pointerenter", {"clientX": 100, "clientY": 100})
+        expect(page.locator("#chart .chart-tooltip")).to_contain_text("—")
+    finally:
+        page.close()

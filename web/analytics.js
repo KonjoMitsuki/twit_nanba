@@ -223,7 +223,7 @@
       table_group_multivalue: "individual",
       table_collapsed_groups: [],
       style: {
-        color: "#447869",
+        color: "#f2785d",
         legend: true,
         labels: false,
         x_tick_interval: null,
@@ -987,8 +987,30 @@
       .forEach(
         (button) => (button.onclick = () => selectView(button.dataset.view)),
       );
+    renderInspector();
   }
-  function selectView(viewId) {
+  function renderInspector() {
+    const host = $("#view-inspector");
+    const panel = currentPanel();
+    host.hidden = !panel;
+    if (!panel) return;
+    const locked = Boolean(state.view.locked);
+    const tabs = { data: "基本", axes: "表示", filters: "絞り込み", style: "見た目", advanced: "詳細" };
+    host.innerHTML = `<h2>パネル設定</h2><p>編集内容は保存ボタンで反映</p><nav class="inspector-tabs" aria-label="パネル設定を開く">${Object.entries(tabs).map(([key, label]) => `<button data-inspect-tab="${key}" aria-label="${label}の設定を開く" ${locked ? "disabled" : ""}>${label}</button>`).join("")}</nav><label class="inspector-select">編集するパネル<select id="inspector-panel">${state.view.config.panels.map((item, index) => `<option value="${index}" ${item.id === panel.id ? "selected" : ""}>${esc(item.title)}</option>`).join("")}</select></label><h3>表示内容</h3>${[["images", "作品画像", panel.show_images], ["legend", "凡例", panel.style.legend], ["labels", "値ラベル", panel.style.labels]].filter(([key]) => panel.chart === "table" ? key === "images" : key !== "images").map(([key, label, checked]) => `<label class="overview-toggle"><span>${label}</span><input type="checkbox" role="switch" data-inspect-toggle="${key}" ${checked ? "checked" : ""} ${locked ? "disabled" : ""}><span class="switch-track" aria-hidden="true"></span></label>`).join("")}<div class="inspector-edit-lock"><h3>編集ロック</h3><p>ロック中は設定変更できません</p><div><button id="inspector-lock" class="quiet-button">${locked ? "ロックを解除" : "ロックする"}</button><button id="inspector-save" class="primary-button" ${state.dirty.has(state.view.id) ? "" : "disabled"}>保存</button></div></div><p class="inspector-note">更新：保存済みデータの再集計</p>`;
+    $("#inspector-panel").onchange = (event) => { state.panel = Number(event.target.value); renderInspector(); renderPanels(); };
+    host.querySelectorAll("[data-inspect-tab]").forEach((button) => { button.onclick = () => { openSettings(state.panel); state.tab = button.dataset.inspectTab; renderSettings(); }; });
+    host.querySelectorAll("[data-inspect-toggle]").forEach((input) => { input.onchange = () => {
+      if (state.view.locked) return;
+      rememberChange("inspector");
+      if (input.dataset.inspectToggle === "images") panel.show_images = input.checked;
+      else panel.style[input.dataset.inspectToggle] = input.checked;
+      changed();
+    }; });
+    $("#inspector-lock").onclick = toggleViewLock;
+    $("#inspector-save").onclick = saveChanges;
+  }
+  function selectView(viewId, activate = true) {
+    if (activate && location.hash !== "#views") location.hash = "views";
     state.view = state.views.find((v) => v.id === viewId) || state.views[0];
     state.panel = 0;
     state.generation++;
@@ -1194,6 +1216,7 @@
   }
   function renderPanels() {
     if (!state.view) return;
+    if (document.body.dataset.section !== "views") return;
     const generation = ++state.generation,
       locked = Boolean(state.view.locked);
     renderTabs();
@@ -2907,12 +2930,16 @@
         });
       }
       renderAccount();
-      selectView(getStored(storageKey("active"), state.views.at(-1)?.id));
+      selectView(getStored(storageKey("active"), state.views.at(-1)?.id), false);
       updateSaveState();
       openConflict();
+      if (location.hash === "#create") $("#create-dialog").showModal();
     } catch (error) {
       setError(error.message);
     }
   }
+  window.addEventListener("hashchange", () => {
+    if (document.body.dataset.section === "views") renderWorkspace();
+  });
   init();
 })();

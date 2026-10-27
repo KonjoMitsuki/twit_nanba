@@ -28,6 +28,10 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             "document.querySelector('#save-status').textContent === '保存済み'"
         )
 
+    def open_account_menu(target):
+        if not target.locator("#profile-user").is_visible():
+            target.locator(".mobile-menu-button").click()
+
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -116,7 +120,7 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
                 "Object.defineProperty(Crypto.prototype, 'randomUUID', "
                 "{ value: undefined, configurable: true });"
             )
-            insecure.goto(url + "/analytics?demo=1")
+            insecure.goto(url + "/analytics?demo=1#views")
             insecure.wait_for_selector(".chart-svg")
             assert not insecure_errors
             insecure.close()
@@ -127,7 +131,7 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             character_page.on(
                 "pageerror", lambda error: character_errors.append(str(error))
             )
-            character_page.goto(url + "/analytics?demo=1")
+            character_page.goto(url + "/analytics?demo=1#views")
             character_page.wait_for_selector(".chart-svg")
             character_page.locator(
                 "#view-list button", has_text="作品テーブル"
@@ -170,7 +174,7 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             )
             errors = []
             page.on("pageerror", lambda error: errors.append(str(error)))
-            page.goto(url + "/analytics?demo=1")
+            page.goto(url + "/analytics?demo=1#views")
             page.wait_for_function(
                 "document.querySelectorAll('.chart-svg').length === 4"
             )
@@ -279,7 +283,7 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
                 page.get_by_label("計算式", exact=True).input_value()
                 == "likes / impressions * 100"
             )
-            page.goto(url + "/analytics")
+            page.goto(url + "/analytics#views")
             page.wait_for_selector("#empty-views:not([hidden])")
             assert page.locator("#profile-user").input_value() == "profile_a"
             page.locator('#starter-templates [data-template="0"]').click()
@@ -311,28 +315,33 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             assert page.locator(".artwork-thumbnail").count() == 0
             page.get_by_label("ビュー名", exact=True).fill("利用者Aの分析")
             save_changes(page)
+            open_account_menu(page)
             page.locator("#profile-user").select_option("profile_b")
             page.wait_for_selector("#empty-views:not([hidden])")
             assert page.locator("#view-list button").count() == 0
+            open_account_menu(page)
             page.locator("#profile-user").select_option("profile_a")
             page.wait_for_function(
                 "document.querySelector('#view-name').value === '利用者Aの分析'"
             )
             page.once("dialog", lambda dialog: dialog.accept("ミツキ"))
+            open_account_menu(page)
             page.get_by_role("button", name="名前を変更", exact=True).click()
             page.wait_for_function(
                 "document.querySelector('#profile-user').selectedOptions[0].textContent === 'ミツキ'"
             )
             page.once("dialog", lambda dialog: dialog.accept("分析担当"))
+            open_account_menu(page)
             page.locator("#profile-user").select_option("__new__")
             page.wait_for_selector("#empty-views:not([hidden])")
             assert page.locator("#profile-user option").count() == 4
+            open_account_menu(page)
             page.locator("#profile-user").select_option("profile_a")
             page.wait_for_function(
                 "document.querySelector('#view-name').value === '利用者Aの分析'"
             )
             another = browser.new_page()
-            another.goto(url + "/analytics")
+            another.goto(url + "/analytics#views")
             another.wait_for_function(
                 "document.querySelector('#view-name').value === '利用者Aの分析'"
             )

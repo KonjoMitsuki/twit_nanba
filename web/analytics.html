@@ -3,49 +3,21 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>データ分析 | twit_nanba</title>
+    <title>分析ダッシュボード | twit_nanba</title>
     <link rel="stylesheet" href="/css/analytics.css" />
+    <link rel="stylesheet" href="/css/apple-hig.css" />
   </head>
-  <body>
+  <body class="apple-app" data-page="analytics" data-section="dashboard">
     <a class="skip-link" href="#workspace">分析エリアへ</a>
     <div class="app-shell">
-      <aside class="sidebar" aria-label="ワークスペース">
-        <a class="workspace-brand" href="/"
-          ><span class="brand-mark">A</span
-          ><span>twit_nanba<small>X Art Analytics</small></span></a
-        >
-        <nav class="primary-nav" aria-label="ページ">
-          <a href="/"><span data-icon="calendar"></span>カレンダー</a
-          ><a href="/analytics" aria-current="page"
-            ><span data-icon="chart"></span>データ分析<span class="prototype"
-              >BETA</span
-            ></a
-          >
-        </nav>
-        <div class="sidebar-heading">
-          MY VIEWS
-          <button
-            id="sidebar-add"
-            class="icon-button"
-            aria-label="ビューを追加"
-          >
-            <span data-icon="plus"></span>
-          </button>
-        </div>
-        <nav id="view-list" class="view-list" aria-label="保存したビュー"></nav>
-        <div class="sidebar-bottom">
-          <span class="private-label"
-            ><span data-icon="copy"></span>ビュー設定は利用者別</span
-          >
-          <div id="account"></div>
-        </div>
-      </aside>
+      <aside class="sidebar" aria-label="ワークスペース"></aside>
       <div class="main-shell">
         <header class="workspace-topbar">
-          <span class="breadcrumb"
-            >ワークスペース <span>/</span> データ分析</span
-          >
+          <div class="workspace-title"><h1 id="page-title">分析ダッシュボード</h1><p id="page-description">投稿・反応・フォロワーをまとめて確認</p></div>
           <div class="header-actions">
+            <label class="overview-month-label"><span class="sr-only">表示する月</span><input id="overview-month" type="month" min="2000-01" max="2200-12"></label>
+            <button id="overview-refresh" class="quiet-button" title="保存済みデータを再集計"><span data-icon="refresh"></span>更新</button>
+            <button id="overview-settings" class="primary-button" type="button">表示設定</button>
             <span id="save-status" role="status" aria-live="polite"></span
             ><button
               id="save-view"
@@ -69,20 +41,20 @@
           ><a href="/analytics">実データへ</a>
         </div>
         <main id="workspace" tabindex="-1">
-          <section class="page-heading">
-            <div>
-              <div class="page-symbol" data-icon="chart"></div>
-              <p class="eyebrow">EXPLORE YOUR ART</p>
-              <h1>データ分析</h1>
-              <p class="page-description">
-                見たいデータを、自分好みに。
-              </p>
+          <section id="overview" aria-label="分析ダッシュボード">
+            <p class="overview-caption">現在のビュー：ダッシュボード <span>· 日本時間</span></p>
+            <p id="overview-error" class="error-message" role="alert" hidden></p>
+            <div id="overview-summary" class="overview-summary" aria-label="月間サマリー"></div>
+            <div class="overview-grid">
+              <section class="overview-card likes-card" id="overview-likes"><div class="overview-card-heading"><div><h2>いいね推移</h2><p>投稿日別 · 最新計測のいいね合計</p></div></div><div id="overview-likes-chart" class="overview-chart"></div></section>
+              <section class="overview-card followers-card" id="overview-followers"><div class="overview-card-heading"><div><h2>フォロワー推移</h2><p>期間中の増減と日別の推移</p></div></div><strong id="overview-follower-total" class="follower-total">—</strong><p id="overview-follower-note" class="follower-note"></p><div id="overview-followers-chart" class="overview-chart mini-chart"></div></section>
+              <section class="overview-card calendar-card" id="overview-calendar"><div class="overview-card-heading"><div><h2>投稿カレンダー</h2><p id="overview-calendar-caption"></p></div><div class="calendar-navigation"><button class="icon-button" data-month-step="-1" aria-label="前の月">‹</button><button class="icon-button" data-month-step="1" aria-label="次の月">›</button></div></div><div id="overview-calendar-grid" class="compact-calendar"></div></section>
+              <section class="overview-card highlights-card" id="overview-posts"><div class="overview-card-heading"><div><h2>反応の多かった投稿</h2><p>期間内のハイライト</p></div><a href="#posts" class="all-posts-link">すべて見る</a></div><div id="overview-highlights"></div></section>
             </div>
-            <button id="new-view" class="primary-button">
-              <span data-icon="plus"></span>ビューを作成
-            </button>
           </section>
-
+          <div id="views-workspace" hidden>
+          <div class="views-preview">
+          <section class="page-heading"><p class="page-description">目的別に分析レイアウトを保存・切り替え</p><button id="new-view" class="primary-button"><span data-icon="plus"></span>ビューを作成</button></section>
           <section id="analysis-content" hidden>
             <div class="view-toolbar">
               <div class="view-identity">
@@ -158,6 +130,8 @@
             <p>テンプレートから始めて、軸や集計方法を自由に変えられます。</p>
             <div id="starter-templates" class="template-grid"></div>
           </section>
+          </div><aside id="view-inspector" class="view-inspector" aria-label="パネル設定"></aside>
+          </div>
           <p id="page-error" class="error-message" role="alert" hidden></p>
         </main>
       </div>
@@ -340,6 +314,8 @@
       </div>
       <p id="conflict-error" role="alert"></p>
     </dialog>
+    <script src="/apple-shell.js"></script>
+    <script src="/overview.js"></script>
     <script src="/analytics-chart-interactions.js"></script>
     <script src="/analytics-charts.js"></script>
     <script src="/analytics-characters.js"></script>

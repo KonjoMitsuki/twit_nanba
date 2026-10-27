@@ -30,6 +30,7 @@ def test_pages_load_split_stylesheets_in_cascade_order():
         "/css/components.css",
         "/css/calendar.css",
         "/css/responsive.css",
+        "/css/apple-hig.css",
     ]
     assert stylesheet_links("detail.html") == [
         "/css/tokens.css",
@@ -37,10 +38,11 @@ def test_pages_load_split_stylesheets_in_cascade_order():
         "/css/components.css",
         "/css/detail.css",
         "/css/responsive.css",
+        "/css/apple-hig.css",
     ]
 
 
-def test_css_structure_has_one_font_import_and_one_mobile_query():
+def test_css_structure_uses_system_fonts_and_responsive_layers():
     styles = {
         path.name: path.read_text(encoding="utf-8")
         for path in CSS_DIR.glob("*.css")
@@ -54,10 +56,12 @@ def test_css_structure_has_one_font_import_and_one_mobile_query():
         "detail.css",
         "responsive.css",
         "analytics.css",
+        "apple-hig.css",
     }
-    assert sum(style.count("@import") for style in styles.values()) == 1
-    assert sum(style.count("@media") for name, style in styles.items() if name != "analytics.css") == 1
+    assert sum(style.count("@import") for style in styles.values()) == 0
+    assert styles["apple-hig.css"].count("@media") >= 3
     assert "@media (max-width: 700px)" in styles["responsive.css"]
+    assert stylesheet_links("analytics.html") == ["/css/analytics.css", "/css/apple-hig.css"]
     assert all("!important" not in style for style in styles.values())
 
 
