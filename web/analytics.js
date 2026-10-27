@@ -1066,6 +1066,14 @@
     if (document.body.dataset.section !== "views") return;
     const generation = ++state.generation,
       locked = Boolean(state.view.locked);
+    // Viewport gestures are transient: preserve them when refreshing/rebuilding
+    // this workspace, without adding them to saved View Settings.
+    const chartContext = `${state.user?.id}:${state.view.id}`;
+    const chartStates = new Map([...$("#panels").querySelectorAll("[data-panel]")].map(article => {
+      const host = article.querySelector(".chart-container");
+      return [article.dataset.panel, host?.chartContext === chartContext ? Object.fromEntries(
+        ["chartViewport", "chartSignature", "chartYMode", "chartYSettings", "chartTouchMode", "hiddenSeries"].map(key => [key, host[key]])) : {}];
+    }));
     renderTabs();
     $("#panels").classList.toggle(
       "single",
@@ -1089,6 +1097,7 @@
             (panel) => panel.id === article.dataset.panel,
           ),
           panel = all[index];
+        Object.assign(article.querySelector(".chart-container"), chartStates.get(panel.id), {chartContext});
         article.querySelector(".panel-title").onclick = () => openSettings(index);
         article.querySelectorAll("[data-quick]").forEach(select => select.onchange = () => {
           if (state.view.locked) return;
@@ -1176,6 +1185,9 @@
           ? (data.rows?.length || 0) > 0
           : (data.points?.length || 0) > 0;
       if (!hasData) {
+        // Disable pointer handling while this panel has no usable points.
+        host.chartInfo = { plot: null, direct() {}, hide() {} };
+        host.chartPrepared = null;
         host.innerHTML = emptyPanelHtml(panel);
         host.querySelector("[data-empty-settings]")?.addEventListener(
           "click",

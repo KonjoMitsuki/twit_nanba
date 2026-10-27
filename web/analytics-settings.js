@@ -143,10 +143,16 @@ window.AnalyticsSettings = function (dependencies) {
   }
   function closeSettings() {
     const wasOpen = !$("#settings").hidden;
+    const pendingPreview = previewTimer != null;
+    clearTimeout(previewTimer);
+    previewTimer = null;
     $("#settings").querySelectorAll("[popover]:popover-open").forEach(popover => popover.hidePopover());
     $("#settings").hidden = true;
     $("#views-workspace").classList.remove("settings-open");
     document.body.classList.remove("has-settings");
+    // Apply the last edit before returning to chart controls. A delayed rebuild
+    // after closing could otherwise detach an open menu or active gesture.
+    if (wasOpen && pendingPreview) renderPanels();
     if (wasOpen) document.querySelector("[data-panel='"+currentPanel()?.id+"'] [data-settings]")?.focus({preventScroll:true});
     window.dispatchEvent(new Event("resize"));
   }
@@ -198,7 +204,10 @@ window.AnalyticsSettings = function (dependencies) {
     updateSettingsHeader();
     updateUndoButton();
     clearTimeout(previewTimer);
-    previewTimer = setTimeout(renderPanels, 350);
+    previewTimer = setTimeout(() => {
+      previewTimer = null;
+      renderPanels();
+    }, 350);
     if (rerender) renderSettings();
     else updateSectionSummaries();
   }

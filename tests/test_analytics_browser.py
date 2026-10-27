@@ -227,6 +227,27 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             assert page.locator("#view-list .view-dirty").count() == 0
             assert page.locator("#save-view").is_disabled()
             page.keyboard.press("Escape")
+            # Refresh rebuilds panel hosts, but transient chart gestures survive
+            # and never mark the persisted view configuration as dirty.
+            chart = page.locator("[data-panel]").filter(
+                has=page.locator("h2", has_text="投稿後のいいね推移")
+            ).locator(".chart-container")
+            chart.locator('[data-chart-action="in"]').click()
+            page.wait_for_function("Array.from(document.querySelectorAll('.chart-container')).some(h=>h.chartViewport)")
+            svg = chart.locator(".chart-svg")
+            axis = svg.evaluate("""el=>{const b=el.getBoundingClientRect(),v=el.viewBox.baseVal;return {x:b.x+30*b.width/v.width,y:b.y+100*b.height/v.height}}""")
+            page.mouse.move(**axis)
+            page.mouse.down()
+            page.mouse.move(axis["x"], axis["y"]-25, steps=5)
+            page.mouse.up()
+            page.wait_for_function("Array.from(document.querySelectorAll('.chart-svg')).some(s=>s.dataset.yMode==='manual')")
+            expected_range = svg.evaluate("el=>[el.dataset.xMin,el.dataset.xMax,el.dataset.yMin,el.dataset.yMax]")
+            with page.expect_response(lambda response: "/demo-api/query" in response.url):
+                page.locator("#refresh").click()
+            page.wait_for_function("document.querySelectorAll('.chart-svg').length===4")
+            assert chart.locator('.chart-svg').evaluate("el=>[el.dataset.xMin,el.dataset.xMax,el.dataset.yMin,el.dataset.yMax]") == expected_range
+            assert chart.locator('.chart-svg').get_attribute('data-y-mode') == 'manual'
+            assert page.locator("#save-view").is_disabled()
             page.reload()
             page.wait_for_selector(".chart-svg")
             page.get_by_role(
