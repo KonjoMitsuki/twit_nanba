@@ -446,3 +446,20 @@ def test_single_panel_tabs_update_the_open_editor(review_server, review_browser)
     page.locator("#single-tabs button").last.click()
     expect(page.get_by_label("名前", exact=True)).to_have_value("いいねとインプレッション")
     page.close()
+
+
+def test_closing_settings_flushes_pending_preview_before_chart_actions(review_server, review_browser):
+    page = review_browser.new_page(viewport={"width": 1440, "height": 1000}, reduced_motion="reduce")
+    page.goto(review_server + '/analytics?demo=1#views')
+    page.wait_for_selector('.chart-svg')
+    page.locator('[data-settings]').first.click()
+    section(page, 'details')
+    page.get_by_label('名前', exact=True).fill('更新待ちの設定')
+    page.locator('#close-settings').click()
+    assert page.locator('.panel h2').first.text_content() == '更新待ちの設定'
+    page.evaluate("window.panelBeforeClose=document.querySelector('.panel');panelBeforeClose.querySelector('.action-menu').open=true")
+    # Cross the actual 350ms debounce boundary: a stale timer must not replace
+    # the panel host underneath the newly opened chart menu.
+    page.wait_for_timeout(450)
+    assert page.evaluate("document.querySelector('.panel')===panelBeforeClose && panelBeforeClose.querySelector('.action-menu').open")
+    page.close()

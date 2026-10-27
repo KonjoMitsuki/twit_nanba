@@ -2571,8 +2571,9 @@ dialog::backdrop {
   position: relative;
 }
 .chart-svg[data-x-min] {
-  touch-action: none;
+  touch-action: auto;
   user-select: none;
+  -webkit-user-select: none;
   cursor: grab;
 }
 .chart-svg:focus-visible {
@@ -2655,11 +2656,33 @@ dialog::backdrop {
   stroke: var(--muted);
   stroke-dasharray: 3 3;
 }
+.chart-axis-readout rect {
+  fill: var(--ink);
+}
+.chart-svg .chart-axis-readout text {
+  fill: var(--paper, #fff);
+  font-family: var(--mono);
+  font-size: 10px;
+}
 .chart-gesture-help {
   color: var(--muted);
   font-size: 10px;
   line-height: 1.6;
   margin: 4px 10px 8px;
+}
+@media (max-width: 600px) {
+  .chart-toolbar,
+  .chart-toolbar > div {
+    gap: 2px;
+  }
+  .chart-toolbar [data-chart-action="reset"] {
+    width: 44px;
+    font-size: 0;
+  }
+  .chart-toolbar [data-chart-action="reset"]::after {
+    content: "↺";
+    font-size: 20px;
+  }
 }
 
 .chart-stage .chart-tooltip.is-scrollable {
