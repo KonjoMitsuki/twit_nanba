@@ -1086,46 +1086,13 @@ dialog {
 dialog::backdrop {
   background: #1c2d263d;
 }
-.settings-dialog {
-  margin: 0 0 0 auto;
-  height: 100dvh;
-  max-height: 100dvh;
-  width: 480px;
-  max-width: 100vw;
-  border-radius: 0;
-  border-right: 0;
-  border-left: 1px solid var(--line);
-  box-shadow: -12px 0 36px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  padding: 0;
-  background: var(--paper);
-}
-/* Only the form scrolls; its context, tabs and save actions stay reachable. */
-.settings-dialog[open] {
-  display: flex;
-  flex-direction: column;
-}
-.settings-dialog > * {
-  flex-shrink: 0;
-  min-width: 0;
-}
-.settings-dialog > .dialog-head {
-  position: static;
-  padding: 24px 24px 16px;
-  margin: 0;
-  align-items: flex-start;
-  background: var(--paper);
-}
-.settings-dialog .dialog-head > div {
-  min-width: 0;
-  flex: 1;
-}
-.settings-dialog .dialog-head > .icon-button {
-  flex-shrink: 0;
-}
-.settings-dialog > #settings-error {
-  margin: 0 24px 12px;
-}
+
+
+
+
+
+
+
 #settings-body {
   min-height: 0;
   flex: 1 1 auto;
@@ -1160,13 +1127,7 @@ dialog::backdrop {
   color: var(--muted);
   margin-bottom: 2px;
 }
-.settings-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-  flex-wrap: wrap;
-}
+
 #settings-title {
   overflow-wrap: anywhere;
 }
@@ -1203,25 +1164,9 @@ dialog::backdrop {
   color: var(--ink);
   font-weight: 600;
 }
-.settings-summary {
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: var(--radius-control);
-  padding: 11px 13px;
-  margin: 0 24px 14px;
-  font-size: 12px;
-  line-height: 1.55;
-}
-.settings-summary-line {
-  margin: 0;
-  color: var(--ink);
-  overflow-wrap: anywhere;
-}
-.settings-summary-target {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-}
+
+
+
 .settings-warning {
   font-size: 11px;
   line-height: 1.55;
@@ -1362,50 +1307,12 @@ dialog::backdrop {
 .chart-card .choice-use {
   font-size: 11px;
 }
-.settings-tabs {
-  display: flex;
-  gap: 4px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 4px;
-  overflow-x: auto;
-  margin: 0 24px;
-  scrollbar-width: none;
-  background: var(--surface);
-}
-.settings-tabs::-webkit-scrollbar {
-  display: none;
-}
-.settings-tabs button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  padding: 7px 8px;
-  min-height: 40px;
-  flex: 1;
-  justify-content: center;
-  background: transparent;
-  white-space: nowrap;
-  border-radius: 7px;
-  color: var(--muted);
-  border: 1px solid transparent;
-}
-.settings-tabs button .icon {
-  width: 14px;
-  height: 14px;
-}
-.settings-tabs button:hover {
-  color: var(--ink);
-  background: var(--surface);
-}
-.settings-tabs button[aria-pressed="true"] {
-  color: var(--accent);
-  background: var(--paper);
-  border-color: var(--control-line);
-  font-weight: 600;
-  box-shadow: var(--shadow-panel);
-}
+
+
+
+
+
+
 .settings-section {
   margin: 26px 0 14px;
   padding-bottom: 10px;
@@ -1638,34 +1545,9 @@ dialog::backdrop {
 .toggle-label input:checked + .toggle-switch::after {
   transform: translateX(14px);
 }
-.settings-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 14px 24px max(16px, env(safe-area-inset-bottom));
-  font-size: 11px;
-  color: var(--muted);
-  border-top: 1px solid var(--line);
-  margin-top: 0;
-  flex-wrap: wrap;
-  background: var(--paper);
-  box-shadow: 0 -3px 12px rgb(32 46 36 / 3%);
-}
-.settings-footer-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex: 1 1 100%;
-}
-.settings-footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  margin-left: auto;
-}
+
+
+
 #undo-settings {
   min-height: 40px;
   padding: 8px 12px;
@@ -1675,14 +1557,8 @@ dialog::backdrop {
   opacity: 0.45;
   cursor: not-allowed;
 }
-#settings-save-state[data-error] {
-  color: #a34646;
-}
-.settings-footer .icon {
-  width: 14px;
-  height: 14px;
-  color: var(--accent);
-}
+
+
 .primary-button-sm {
   background: var(--accent);
   color: white;
@@ -1800,49 +1676,12 @@ dialog::backdrop {
 .swatch-btn.is-selected {
   box-shadow: 0 0 0 2px var(--accent);
 }
-.style-shortcuts {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-}
-.style-shortcut-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  background: white;
-  border-radius: 6px;
-  text-align: left;
-  transition: all 0.15s ease;
-  cursor: pointer;
-}
-.style-shortcut-card:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.style-shortcut-card .shortcut-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: var(--surface);
-  border-radius: 6px;
-  color: var(--accent);
-  flex-shrink: 0;
-}
-.style-shortcut-card strong {
-  display: block;
-  font-size: 12px;
-  color: var(--ink);
-}
-.style-shortcut-card small {
-  display: block;
-  font-size: 11px;
-  color: var(--muted);
-}
+
+
+
+
+
+
 .filter-group-head {
   display: flex;
   gap: 10px;
@@ -2496,20 +2335,10 @@ dialog::backdrop {
   .table-pagination {
     font-size: 10px;
   }
-  .settings-dialog {
-    width: 100%;
-    max-width: 100%;
-    padding: 0;
-  }
-  .settings-dialog > .dialog-head {
-    padding: 20px 16px 14px;
-  }
-  .settings-summary {
-    margin: 0 16px 12px;
-  }
-  .settings-dialog > #settings-error {
-    margin: 0 16px 12px;
-  }
+
+
+
+
   #settings-body {
     padding: 16px;
   }
@@ -2520,28 +2349,11 @@ dialog::backdrop {
     font-size: 16px;
     min-height: 46px;
   }
-  .settings-tabs {
-    gap: 3px;
-    margin: 0 16px;
-  }
-  .settings-tabs button {
-    flex: 1;
-    justify-content: center;
-    gap: 3px;
-    font-size: 11.5px;
-    padding: 8px 4px;
-    min-height: 44px;
-  }
-  .settings-tabs button .icon {
-    display: none;
-  }
-  .settings-context,
-  .settings-summary {
-    font-size: 12px;
-  }
-  .settings-summary-target {
-    font-size: 11px;
-  }
+
+
+
+
+
   .chart-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2552,16 +2364,9 @@ dialog::backdrop {
   .choice-use {
     font-size: 11px;
   }
-  .settings-footer {
-    flex-wrap: wrap;
-    padding: 12px 16px max(16px, env(safe-area-inset-bottom));
-  }
-  .settings-footer-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-  #undo-settings,
-  #save-settings {
+
+
+  #undo-settings {
     min-height: 44px;
   }
   .panel-action-label {
@@ -2650,30 +2455,7 @@ dialog::backdrop {
     overflow: visible;
   }
 }
-@media (max-height: 600px) {
-  .settings-dialog > .dialog-head {
-    padding-top: 10px;
-    padding-bottom: 8px;
-    max-height: 30dvh;
-    overflow-y: auto;
-  }
-  .settings-summary {
-    max-height: 74px;
-    overflow-y: auto;
-    margin-bottom: 8px;
-  }
-  .settings-footer {
-    padding-top: 8px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-    gap: 4px 10px;
-  }
-  .settings-footer-left {
-    flex: 1 1 140px;
-  }
-  .settings-footer-actions {
-    width: auto;
-  }
-}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

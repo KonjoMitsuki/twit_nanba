@@ -1,5 +1,8 @@
 # 分析画面のデザイン改修
 
+> 本書は旧CSS改修の記録です。ビュー設定の操作体系は [analytics-view-settings-redesign-spec.md](analytics-view-settings-redesign-spec.md) による刷新で置き換えられました。
+
+
 ## 実装前の調査
 
 調査対象は `web/analytics.html`、`web/css/analytics.css`、`web/analytics.js`、分析用のグラフ・テーブル・キャラクター各モジュールと既存ブラウザテスト。実行コードを基準に、次の機能を維持する。

@@ -1,0 +1,40 @@
+{
+  "1440x800": {
+    "characters": 814,
+    "fields": [
+      "chart",
+      "title",
+      "source",
+      "period_days",
+      "from_date",
+      "to_date",
+      "compare_previous",
+      "x",
+      "y",
+      "series",
+      "aggregate",
+      "transform",
+      "allocation"
+    ],
+    "descriptions": 20
+  },
+  "390x844": {
+    "characters": 787,
+    "fields": [
+      "chart",
+      "title",
+      "source",
+      "period_days",
+      "from_date",
+      "to_date",
+      "compare_previous",
+      "x",
+      "y",
+      "series",
+      "aggregate",
+      "transform",
+      "allocation"
+    ],
+    "descriptions": 20
+  }
+}

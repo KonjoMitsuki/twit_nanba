@@ -80,6 +80,14 @@ def review_browser():
         browser.close()
 
 
+
+def open_section(page, name):
+    if name == "about": name = "details"
+    target = page.locator(f'#settings [data-section="{name}"]')
+    if target.count(): target.evaluate("el => el.open = true")
+    if name in {"axes", "style"}:
+        page.locator('#settings [data-section="details"]').evaluate("el => el.open = true")
+
 def assert_workspace_fits(page, touch=False):
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     # Tables and MY VIEWS can scroll internally; panel actions must stay inside
@@ -87,7 +95,7 @@ def assert_workspace_fits(page, touch=False):
     assert page.locator(".panel").evaluate_all(
         """panels => panels.every(panel => {
           const card = panel.getBoundingClientRect();
-          return Array.from(panel.querySelectorAll('.panel-head button, .panel-title')).every(el => {
+          return Array.from(panel.querySelectorAll('.panel-head button, .action-menu > summary, .panel-title')).filter(el => el.getClientRects().length).every(el => {
             const box = el.getBoundingClientRect();
             return box.left >= card.left && box.right <= card.right + 1;
           });
@@ -95,29 +103,30 @@ def assert_workspace_fits(page, touch=False):
     )
     if touch:
         assert page.locator(".panel-head button").evaluate_all(
-            "buttons => buttons.every(el => el.getBoundingClientRect().width >= 44 && el.getBoundingClientRect().height >= 44)"
+            "buttons => buttons.filter(el => el.getClientRects().length).every(el => el.getBoundingClientRect().width >= 44 && el.getBoundingClientRect().height >= 44)"
         )
 
 
 def assert_settings_usable(page):
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    dock = page.locator("#settings").bounding_box()
+    assert dock["x"] >= 0 and dock["x"] + dock["width"] <= page.viewport_size["width"] + 1
+    if page.viewport_size["width"] < 1024:
+        preview = page.locator(".panel.is-selected").bounding_box()
+        assert preview["height"] >= 44
+        assert preview["y"] + preview["height"] <= dock["y"] + 1
     assert page.locator("#settings").evaluate("el => el.scrollWidth <= el.clientWidth")
     assert page.locator("#settings-body").evaluate(
         "el => el.clientHeight >= 44 && el.scrollWidth <= el.clientWidth"
     )
-    assert page.locator(".settings-tabs button, .settings-footer button").evaluate_all(
-        """buttons => buttons.every(el => {
-          const box = el.getBoundingClientRect();
-          return box.left >= 0 && box.right <= innerWidth + 1 && box.top >= 0 && box.bottom <= innerHeight + 1;
-        })"""
-    )
-    footer = page.locator(".settings-footer").bounding_box()
+    head = page.locator("#settings .dialog-head").bounding_box()
     page.locator("#settings-body").evaluate("el => el.scrollTop = el.scrollHeight")
-    assert page.locator(".settings-footer").bounding_box() == footer
+    assert page.locator("#settings .dialog-head").bounding_box() == head
 
 
 def save_view(page, settings=False):
-    page.locator("#save-settings" if settings else "#save-view").click()
-    page.wait_for_function("document.querySelector('#save-status').textContent === '保存済み'")
+    page.locator("#save-view").click()
+    page.wait_for_function("document.querySelector('#save-status').textContent === '✓ 保存済み'")
 
 
 @pytest.mark.parametrize("width,height", [(1440, 1000), (1024, 900), (768, 1024), (390, 844), (320, 740), (812, 375)])
@@ -144,7 +153,7 @@ def test_customized_layout_save_switch_lock_and_settings(review_server, review_b
         ids = page.locator(".panel").evaluate_all("els => els.map(el => el.dataset.panel)")
         page.locator('.panel [data-move="1"]').first.click()
         reordered = [ids[1], ids[0], *ids[2:]]
-        expect(page.locator("#save-status")).to_have_text("未保存")
+        expect(page.locator("#save-status")).to_have_text("● 未保存")
         assert page.locator(".panel").evaluate_all("els => els.map(el => el.dataset.panel)") == reordered
         expect(page.locator("#view-list .view-dirty")).to_have_count(1)
 
@@ -155,28 +164,31 @@ def test_customized_layout_save_switch_lock_and_settings(review_server, review_b
             page.locator("[data-panel-type]").filter(has_text=kind).click()
             expect(page.locator("#settings")).to_be_visible()
             if kind != "棒グラフ":
-                page.locator("#done-settings").click()
+                page.locator("#close-settings").click()
         expect(page.locator(".panel")).to_have_count(7)
         bar_id = page.locator(".panel").last.get_attribute("data-panel")
         title = "キャラクターと投稿の反応を比較する長い名前のパネル" * 3
-        page.get_by_label("パネル名", exact=True).fill(title)
+        open_section(page, "details")
+        page.get_by_label("名前", exact=True).fill(title)
         assert_settings_usable(page)
 
-        page.get_by_role("button", name="表示", exact=True).click()
-        page.get_by_label("集計方法", exact=True).select_option("median")
-        page.locator('[data-y="retweets"]').check()
+        open_section(page, "axes")
+        page.get_by_label("集計", exact=True).select_option("median")
+        page.locator("[data-add-y]").select_option("retweets")
         assert_settings_usable(page)
 
-        page.get_by_role("button", name="絞り込み", exact=True).click()
+        open_section(page, "filters")
         page.locator("#add-filter-group").click()
+        page.locator(".filter-rule").first.evaluate("el => el.open = true")
         page.locator('[data-field="filters.0.rules.0.field"]').select_option("character")
         page.locator('[data-field="filters.0.rules.0.op"]').select_option("contains")
         page.locator('[data-field="filters.0.rules.0.value"]').fill("初音")
         assert_settings_usable(page)
 
-        page.get_by_role("button", name="見た目", exact=True).click()
+        open_section(page, "style")
+        page.get_by_role("button", name="配色の説明", exact=True).click()
         page.get_by_role("button", name="カラー #f2785d", exact=True).click()
-        legend = page.get_by_label("凡例を表示", exact=True)
+        legend = page.get_by_label("凡例", exact=True)
         legend.focus()
         page.keyboard.press("Space")
         expect(legend).not_to_be_checked()
@@ -187,28 +199,31 @@ def test_customized_layout_save_switch_lock_and_settings(review_server, review_b
         expect(legend).to_be_checked()
         assert_settings_usable(page)
 
-        page.get_by_role("button", name="詳細", exact=True).click()
+        open_section(page, "advanced")
+        page.locator("#add-formula").click()
         page.locator('[data-example="rate"]').click()
-        expect(page.get_by_label("計算式", exact=True)).to_have_value("likes / impressions * 100")
+        expect(page.get_by_label("式", exact=True)).to_have_value("likes / impressions * 100")
         assert_settings_usable(page)
         save_view(page, settings=True)
-        page.locator("#done-settings").click()
+        page.locator("#close-settings").click()
         expect(page.locator(".panel")).to_have_count(7)
         page.get_by_label("ビュー名", exact=True).fill("私のカスタム分析")
         page.keyboard.press("Control+s")
-        expect(page.locator("#save-status")).to_have_text("保存済み")
+        expect(page.locator("#save-status")).to_have_text("✓ 保存済み")
         expect(page.locator("#view-list .view-dirty")).to_have_count(0)
 
         original_view = page.locator('#view-list button[aria-current="page"]').get_attribute("data-view")
         expected_ids = page.locator(".panel").evaluate_all("els => els.map(el => el.dataset.panel)")
+        page.locator("#view-menu").evaluate("el => el.open = true")
         page.locator("#duplicate-view").click()
         expect(page.locator("#view-name")).to_have_value("私のカスタム分析 のコピー")
         if width <= 760:
-            page.locator(".mobile-menu-button").click()
-        page.locator("#view-list button").first.click()
-        if width <= 760:
-            page.locator(".mobile-menu-button").click()
-        page.locator(f'#view-list [data-view="{original_view}"]').click()
+            first_view = page.locator("#view-list button").first.get_attribute("data-view")
+            page.locator("#view-select").select_option(first_view)
+            page.locator("#view-select").select_option(original_view)
+        else:
+            page.locator("#view-list button").first.click()
+            page.locator(f'#view-list [data-view="{original_view}"]').click()
         expect(page.locator("#view-name")).to_have_value("私のカスタム分析")
         expect(page.locator(".panel")).to_have_count(7)
         assert page.locator(".panel").evaluate_all("els => els.map(el => el.dataset.panel)") == expected_ids
@@ -239,16 +254,17 @@ def test_customized_layout_save_switch_lock_and_settings(review_server, review_b
         assert page.locator(".panel").evaluate_all("els => els.map(el => el.dataset.panel)") == expected_ids
 
         page.locator(f'[data-panel="{bar_id}"] [data-settings]').click()
-        expect(page.get_by_label("パネル名", exact=True)).to_have_value(title)
-        page.get_by_role("button", name="表示", exact=True).click()
-        expect(page.get_by_label("集計方法", exact=True)).to_have_value("median")
-        expect(page.locator('[data-y="retweets"]')).to_be_checked()
-        page.get_by_role("button", name="絞り込み", exact=True).click()
+        expect(page.get_by_label("名前", exact=True)).to_have_value(title)
+        open_section(page, "axes")
+        expect(page.get_by_label("集計", exact=True)).to_have_value("median")
+        expect(page.locator('[data-remove-y="retweets"]')).to_be_visible()
+        open_section(page, "filters")
+        page.locator(".filter-rule").first.evaluate("el => el.open = true")
         expect(page.locator('[data-field="filters.0.rules.0.value"]')).to_have_value("初音")
-        page.get_by_role("button", name="見た目", exact=True).click()
-        expect(page.get_by_label("メインカラー", exact=True)).to_have_value("#f2785d")
-        page.get_by_role("button", name="詳細", exact=True).click()
-        expect(page.get_by_label("計算式", exact=True)).to_have_value("likes / impressions * 100")
+        open_section(page, "style")
+        expect(page.get_by_label("色", exact=True)).to_have_value("#f2785d")
+        open_section(page, "advanced")
+        expect(page.get_by_label("式", exact=True)).to_have_value("likes / impressions * 100")
         assert_settings_usable(page)
         if artifacts:
             page.screenshot(path=str(output / f"customized-settings-{width}x{height}.png"))
@@ -260,13 +276,14 @@ def test_customized_layout_save_switch_lock_and_settings(review_server, review_b
         expect(page.locator(".view-edit-hint")).to_be_hidden()
         expect(page.locator("#add-panel")).to_be_disabled()
         expect(page.locator("#view-name")).not_to_be_editable()
-        assert page.locator(".panel-controls button").evaluate_all("els => els.every(el => el.disabled)")
+        assert page.locator(".panel-controls button:not([data-settings])").evaluate_all("els => els.every(el => el.disabled)")
         assert_workspace_fits(page, width <= 760)
         page.reload()
         expect(page.locator("#view-lock-state")).to_be_visible()
         page.locator("#toggle-lock").click()
         expect(page.locator("#view-lock-state")).to_be_hidden()
         page.once("dialog", lambda dialog: dialog.accept())
+        page.locator(f'[data-panel="{bar_id}"] .action-menu').evaluate("el => el.open = true")
         page.locator(f'[data-panel="{bar_id}"] [data-remove]').click()
         expect(page.locator(".panel")).to_have_count(6)
         save_view(page)
@@ -324,13 +341,9 @@ def test_apple_dashboard_calendar_and_detail(review_server, review_browser, widt
 
         page.goto(review_server + "/?month=2026-10")
         expect(page.locator("#month-title")).to_have_text("2026年10月")
-        if width <= 760:
-            page.locator('#calendar-compact [data-day="2026-10-21"]').click()
-            expect(page.locator(".day-dialog")).to_be_visible()
-            expect(page.locator(".day-dialog .highlight-post")).to_have_count(1)
-            page.locator(".day-dialog .highlight-post").click()
-        else:
-            page.locator(".art-card").first.click()
+        expect(page.locator(".calendar-wrap")).to_be_visible()
+        expect(page.locator("#calendar .art-card").first).to_be_visible()
+        page.locator(".art-card").first.click()
         page.wait_for_selector(".carousel-image")
         expect(page.locator(".carousel-position")).to_have_text("1 / 2")
         page.get_by_role("button", name="次の画像", exact=True).click()

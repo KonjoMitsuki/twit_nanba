@@ -66,9 +66,12 @@
         '<div class="panel-empty">この条件に一致する計測データがありません。<br>期間・計測時点・フィルターを変更してください。</div>';
       return;
     }
+    const preview = panel.chart !== "pie" && document.body.classList.contains("has-settings") &&
+      innerWidth < 1024 && host.closest(".panel")?.classList.contains("is-selected");
     const W = Math.max(280, Math.floor(host.clientWidth || 600) - 20),
-      H = 245;
-    const M = { l: 55, r: 22, t: 23, b: 48 },
+      H = preview ? Math.max(90, Math.min(245, host.clientHeight -
+        (innerHeight <= 480 ? 0 : 44 + (panel.style.legend ? 44 : 0)))) : 245;
+    const M = { l: 55, r: 22, t: preview ? 12 : 23, b: preview ? 28 : 48 },
       pw = W - M.l - M.r,
       ph = H - M.t - M.b;
     const palette = [
@@ -251,6 +254,7 @@
         ymin,
         ymax,
         panel.style.y_tick_interval,
+        preview ? Math.max(2, Math.floor(ph / 32) + 1) : 5,
       );
       yTicks.forEach((value) => {
         const y = ys(value);
@@ -500,7 +504,7 @@
       ];
       const markup =
         `<strong class="chart-tooltip-header">${esc(heading)}</strong>` +
-        artworks.map(artworkCard).join("") +
+        (panel.show_images === false ? "" : artworks.map(artworkCard).join("")) +
         selected
           .map(
             (p) =>
