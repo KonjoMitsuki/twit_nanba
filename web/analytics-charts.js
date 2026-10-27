@@ -671,6 +671,23 @@
         visibleX(p) &&
         (!view || (p.y >= view.ymin && p.y <= view.ymax)),
     );
+    const comparisonLine = panel.chart === "line" && Boolean(panel.series);
+    tooltip.classList.toggle("is-comparison-line", comparisonLine);
+    const statisticName =
+      panel.transform === "none"
+        ? {
+            sum: "合計",
+            mean: "平均",
+            median: "中央値",
+            min: "最小",
+            max: "最大",
+            count: "件数",
+          }[panel.aggregate]
+        : {
+            delta: "増減",
+            rate: "増減率",
+            moving_average: "移動平均",
+          }[panel.transform];
     const artworkCard = (artwork) => {
       const urls = artwork.image_urls || [];
       let src;
@@ -725,22 +742,26 @@
         if (overlay) overlay.innerHTML = crosshair(px, py);
         return;
       }
-      const artworks = [
-        ...new Map(
-          selected
-            .filter((p) => p.artwork)
-            .map((p) => [`${p.artwork.id}:${p.artwork.row_id}`, p.artwork]),
-        ).values(),
-      ];
+      const artworks =
+        panel.show_images === false || comparisonLine
+          ? []
+          : [
+              ...new Map(
+                selected
+                  .filter((p) => p.artwork)
+                  .map((p) => [`${p.artwork.id}:${p.artwork.row_id}`, p.artwork]),
+              ).values(),
+            ];
+      const headingLabel = comparisonLine
+        ? `${result.fields[panel.x] || panel.x}: ${heading}${panel.y.length === 1 ? ` · ${result.fields[panel.y[0]] || panel.y[0]}${statisticName ? `（${statisticName}）` : ""}` : ""}`
+        : heading;
       const markup =
-        `<strong class="chart-tooltip-header">${esc(heading)}</strong>` +
-        (panel.show_images === false
-          ? ""
-          : artworks.map(artworkCard).join("")) +
+        `<strong class="chart-tooltip-header">${esc(headingLabel)}</strong>` +
+        artworks.map(artworkCard).join("") +
         selected
           .map(
             (p) =>
-              `<div class="chart-tooltip-row"><span><i style="background:${colorFor(p)}"></i>${esc(panel.chart === "scatter" ? p.label + " / " + names[key(p)] : names[key(p)])}</span><strong>${panel.chart === "box" ? `中央値 ${fmt(p.median)}<br>Q1 ${fmt(p.q1)} / Q3 ${fmt(p.q3)}<br>ひげ ${fmt(p.low)}〜${fmt(p.high)} / ${p.n}件` : esc(fmt(p.y))}</strong></div>`,
+              `<div class="chart-tooltip-row"><span><i style="background:${colorFor(p)}"></i>${esc(panel.chart === "scatter" ? p.label + " / " + names[key(p)] : names[key(p)])}</span><strong>${panel.chart === "box" ? `中央値 ${fmt(p.median)}<br>Q1 ${fmt(p.q1)} / Q3 ${fmt(p.q3)}<br>ひげ ${fmt(p.low)}〜${fmt(p.high)} / ${p.n}件` : esc(fmt(p.y))}${comparisonLine && p.n != null ? `<small class="chart-tooltip-count">${esc(fmt(p.n))}件</small>` : ""}</strong></div>`,
           )
           .join("");
       display(markup, px, py);

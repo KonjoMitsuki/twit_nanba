@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from test_analytics_layout_browser import review_browser, review_server
+from test_analytics_layout_browser import review_server
 
 pytestmark = pytest.mark.skipif(
     os.getenv("ANALYTICS_BROWSER_TESTS") != "1", reason="Opt-in browser verification"
@@ -329,6 +329,19 @@ def chart_page():
         assert not errors
 
 
+@pytest.fixture
+def chart_review_browser():
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
+            executable_path=shutil.which("chromium"), headless=True,
+            args=["--no-sandbox"],
+        )
+        yield browser
+        browser.close()
+
+
 def axis_point(page, axis):
     return page.locator(".chart-svg").first.evaluate(
         """(el, axis) => {
@@ -427,8 +440,8 @@ def test_y_auto_button_toggles_and_manual_plot_drag_pans_y():
         browser.close()
 
 
-def test_demo_dashboard_histogram_has_visible_bars(review_server, review_browser):
-    page = review_browser.new_page(viewport={"width": 1440, "height": 1000})
+def test_demo_dashboard_histogram_has_visible_bars(review_server, chart_review_browser):
+    page = chart_review_browser.new_page(viewport={"width": 1440, "height": 1000})
     page.goto(review_server + "/analytics?demo=1#views")
     page.locator("#new-view").click()
     page.locator('#create-templates [data-template="2"]').click()
@@ -440,7 +453,77 @@ def test_demo_dashboard_histogram_has_visible_bars(review_server, review_browser
         "NaN" not in bar.get_attribute("x") and bar.bounding_box()["width"] > 0
         for bar in bars.all()
     )
+    growth = page.locator(".panel").filter(has=page.locator('h2:text-is("投稿後のいいね推移")'))
+    svg = growth.locator(".chart-svg")
+    plot_center = """el => { const b = el.getBoundingClientRect(), p = el.closest('.chart-container').chartInfo.plot;
+        return {x:b.x+(p.l+p.pw/2)*b.width/p.W, y:b.y+(p.t+p.ph/2)*b.height/p.H}; }"""
+    position = svg.evaluate(plot_center)
+    page.mouse.move(**position)
+    tooltip = growth.locator(".chart-tooltip")
+    assert tooltip.is_visible()
+    assert "投稿後の経過時間（h）" in tooltip.inner_text()
+    assert "いいね（平均）" in tooltip.inner_text()
+    assert growth.locator(".chart-tooltip-row").count() > 0
+    assert growth.locator(".chart-artwork-card").count() == 0
     page.close()
+
+
+def test_comparison_line_tooltip_keeps_series_values_without_artwork_cards(chart_review_browser):
+    page = chart_review_browser.new_page(viewport={"width": 1100, "height": 900})
+    setup_chart(page, dates=True)
+    page.evaluate("""() => {
+      panel.source = 'snapshots'; panel.series = 'character';
+      panel.aggregate = 'mean'; panel.transform = 'none';
+      result.points.forEach((p, i) => p.artwork = {
+        id: String(i), row_id: String(i), title: '作品' + i,
+        image_urls: [], likes: p.y, retweets: 0
+      });
+      draw();
+    }""")
+    page.mouse.move(**plot_point(page))
+    tooltip = page.locator(".chart-tooltip")
+    assert tooltip.is_visible()
+    assert page.locator(".chart-tooltip-row").count() == 2
+    assert page.locator(".chart-tooltip-count").all_text_contents() == ["1件", "1件"]
+    assert "いいね（平均）" in tooltip.inner_text()
+    assert page.locator(".chart-artwork-card").count() == 0
+    page.evaluate("panel.series=''; draw()")
+    page.mouse.move(0, 0)
+    page.mouse.move(**plot_point(page))
+    assert page.locator(".chart-artwork-card").count() == 2
+    page.close()
+
+
+def test_phone_comparison_values_scroll_with_page(chart_review_browser):
+    context = chart_review_browser.new_context(
+        viewport={"width": 375, "height": 812}, is_mobile=True, has_touch=True
+    )
+    page = context.new_page()
+    setup_chart(page, dates=True)
+    page.evaluate("""() => {
+      document.body.style.minHeight = '1600px';
+      panel.series = 'character'; panel.aggregate = 'mean'; panel.transform = 'none';
+      result.points = Array.from({length: 15}, (_, i) => ({
+        ...result.points[0], series: 'キャラ' + i, y: i * 10, n: i + 1
+      }));
+      draw();
+      const info = document.querySelector('#chart').chartInfo;
+      info.inspect({x: info.plot.l + info.plot.pw / 2, y: info.plot.t + info.plot.ph / 2});
+    }""")
+    tooltip = page.locator(".chart-tooltip")
+    assert tooltip.is_visible()
+    assert page.locator(".chart-tooltip-row").count() == 15
+    assert tooltip.evaluate("el => getComputedStyle(el).position") == "static"
+    assert tooltip.evaluate("el => el.scrollHeight <= el.clientHeight")
+    box = tooltip.bounding_box()
+    start = {"x": box["x"] + box["width"] / 2, "y": box["y"] + 40}
+    cdp = context.new_cdp_session(page)
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [dict(start, id=0)]})
+    for distance in [20, 60, 120]:
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [dict(start, id=0, y=start["y"] - distance)]})
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+    page.wait_for_function("scrollY > 0")
+    context.close()
 
 
 def test_settings_refresh_and_manual_scale_are_separate(chart_page):

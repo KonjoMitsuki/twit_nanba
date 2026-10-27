@@ -2652,6 +2652,13 @@ dialog::backdrop {
   white-space: nowrap;
   font-family: var(--mono);
 }
+.chart-tooltip-count {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: normal;
+  text-align: right;
+}
 .chart-crosshair {
   stroke: var(--muted);
   stroke-dasharray: 3 3;
@@ -2688,6 +2695,8 @@ dialog::backdrop {
 .chart-stage .chart-tooltip.is-scrollable {
   pointer-events: auto;
   overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chart-artwork-card {
@@ -2769,4 +2778,16 @@ dialog::backdrop {
 
 .chart-stage .chart-tooltip:has(.chart-artwork-card) {
   max-height: min(360px, 70vh);
+}
+
+@media (max-width: 600px) {
+  body:not(.has-settings) .chart-stage .chart-tooltip.is-comparison-line {
+    position: static;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    margin-top: 8px;
+    pointer-events: auto;
+  }
 }
