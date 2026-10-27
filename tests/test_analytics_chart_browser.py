@@ -494,35 +494,50 @@ def test_comparison_line_tooltip_keeps_series_values_without_artwork_cards(chart
     page.close()
 
 
-def test_phone_comparison_values_scroll_with_page(chart_review_browser):
+def test_phone_tap_pins_scrollable_comparison_tooltip_until_outside_tap(chart_review_browser):
     context = chart_review_browser.new_context(
         viewport={"width": 375, "height": 812}, is_mobile=True, has_touch=True
     )
     page = context.new_page()
     setup_chart(page, dates=True)
     page.evaluate("""() => {
-      document.body.style.minHeight = '1600px';
       panel.series = 'character'; panel.aggregate = 'mean'; panel.transform = 'none';
       result.points = Array.from({length: 15}, (_, i) => ({
         ...result.points[0], series: 'キャラ' + i, y: i * 10, n: i + 1
       }));
       draw();
-      const info = document.querySelector('#chart').chartInfo;
-      info.inspect({x: info.plot.l + info.plot.pw / 2, y: info.plot.t + info.plot.ph / 2});
     }""")
+    cdp = context.new_cdp_session(page)
+
+    def touch(kind, point):
+        cdp.send(
+            "Input.dispatchTouchEvent",
+            {"type": kind, "touchPoints": [dict(point, id=0)] if point else []},
+        )
+
+    touch("touchStart", plot_point(page))
+    touch("touchEnd", None)
     tooltip = page.locator(".chart-tooltip")
     assert tooltip.is_visible()
     assert page.locator(".chart-tooltip-row").count() == 15
-    assert tooltip.evaluate("el => getComputedStyle(el).position") == "static"
-    assert tooltip.evaluate("el => el.scrollHeight <= el.clientHeight")
+    assert tooltip.evaluate("el => el.classList.contains('is-pinned')")
+    assert tooltip.evaluate("el => getComputedStyle(el).position") == "absolute"
+    assert tooltip.evaluate("el => el.scrollHeight > el.clientHeight")
     box = tooltip.bounding_box()
-    start = {"x": box["x"] + box["width"] / 2, "y": box["y"] + 40}
-    cdp = context.new_cdp_session(page)
-    cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [dict(start, id=0)]})
+    start = {"x": box["x"] + box["width"] / 2, "y": box["y"] + box["height"] / 2}
+    assert page.evaluate(
+        "point => document.elementFromPoint(point.x, point.y)?.closest('.chart-tooltip') !== null",
+        start,
+    )
+    touch("touchStart", start)
     for distance in [20, 60, 120]:
-        cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [dict(start, id=0, y=start["y"] - distance)]})
-    cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
-    page.wait_for_function("scrollY > 0")
+        touch("touchMove", dict(start, y=start["y"] - distance))
+    touch("touchEnd", None)
+    page.wait_for_function("document.querySelector('.chart-tooltip').scrollTop > 0")
+    assert tooltip.is_visible()
+    assert tooltip.evaluate("el => el.classList.contains('is-pinned')")
+    page.locator("#outside").tap()
+    assert tooltip.is_hidden()
     context.close()
 
 

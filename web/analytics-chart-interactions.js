@@ -1,6 +1,26 @@
 /* Independent viewport math and shared mouse/touch gesture state for SVG charts. */
 (() => {
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  let pinnedHost = null;
+  const clearPinned = () => {
+    if (!pinnedHost) return;
+    const host = pinnedHost;
+    pinnedHost = null;
+    host.querySelector(".chart-tooltip")?.classList.remove("is-pinned");
+    host.chartInfo?.hide();
+  };
+  if (typeof document !== "undefined")
+    document.addEventListener(
+      "pointerdown",
+      (event) => {
+        if (
+          pinnedHost &&
+          !pinnedHost.querySelector(".chart-tooltip")?.contains(event.target)
+        )
+          clearPinned();
+      },
+      true,
+    );
   function ticks(min, max, interval, count = 5) {
     if (max === min && Number.isFinite(min)) return [min];
     if (!(max > min)) return [];
@@ -71,13 +91,23 @@
   }
   function bind(host, info) {
     host.chartInfo = info;
+    if (pinnedHost === host && host.querySelector(".chart-tooltip")?.hidden)
+      pinnedHost = null;
     if (host.chartBound) return;
     host.chartBound = true;
     const pointers = new Map();
     let gesture = null,
       frame = null,
       suppressClick = false,
-      hover = null;
+      hover = null,
+      touchedMultiple = false;
+    const pinTooltip = () => {
+      const tooltip = host.querySelector(".chart-tooltip");
+      if (!tooltip || tooltip.hidden) return;
+      if (pinnedHost && pinnedHost !== host) clearPinned();
+      pinnedHost = host;
+      tooltip.classList.add("is-pinned");
+    };
     const local = (x, y) => {
       const svg = host.querySelector(".chart-svg"),
         b = svg.getBoundingClientRect(),
@@ -132,6 +162,7 @@
       const area = region(pos);
       if (!area) return false;
       pointers.set(id, pos);
+      if (pointers.size > 1) touchedMultiple = true;
       startGesture(pointers.size > 1 ? "plot" : area, touch);
       hover = null;
       if (area === "y") host.chartYMode = "manual";
@@ -213,6 +244,7 @@
       if (pointers.size) startGesture(gesture?.area || "plot", gesture?.touch);
       else {
         gesture = null;
+        touchedMultiple = false;
         host.chartTouchTargets?.clear();
       }
     };
@@ -251,6 +283,7 @@
       const pos = local(event.clientX, event.clientY);
       if (pointers.has(event.pointerId)) move(event.pointerId, pos);
       else if (event.pointerType !== "touch") {
+        if (pinnedHost === host) return;
         const area = region(pos);
         host.querySelector(".chart-svg").style.cursor =
           area === "y" ? "ns-resize" : area === "x" ? "ew-resize" : "grab";
@@ -269,8 +302,23 @@
       if (svg?.hasPointerCapture(event.pointerId))
         svg.releasePointerCapture(event.pointerId);
     };
-    host.addEventListener("pointerup", endPointer);
+    host.addEventListener("pointerup", (event) => {
+      const g = gesture;
+      const tapped =
+        event.pointerType === "touch" &&
+        pointers.has(event.pointerId) &&
+        pointers.size === 1 &&
+        !touchedMultiple &&
+        g?.area === "plot" &&
+        Math.hypot(
+          local(event.clientX, event.clientY).x - g.start.x,
+          local(event.clientX, event.clientY).y - g.start.y,
+        ) <= 8;
+      endPointer(event);
+      if (tapped) pinTooltip();
+    });
     host.addEventListener("pointercancel", (event) => {
+      if (!pointers.has(event.pointerId)) return;
       endPointer(event);
       host.chartInfo.hide();
     });
@@ -279,7 +327,7 @@
     });
     host.addEventListener("pointerleave", () => {
       hover = null;
-      if (!pointers.size) host.chartInfo.hide();
+      if (!pointers.size && pinnedHost !== host) host.chartInfo.hide();
     });
     // Pointer events own gesture state. Cancel native touch movement only after
     // horizontal intent (or two fingers), so vertical swipes can scroll the page.
@@ -375,7 +423,8 @@
       if (!event.target.closest(".chart-svg")) return;
       const i = host.chartInfo;
       if (event.key === "Escape") {
-        i.hide();
+        if (pinnedHost === host) clearPinned();
+        else i.hide();
         return;
       }
       if (!i.plot) return;

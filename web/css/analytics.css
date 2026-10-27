@@ -2692,7 +2692,7 @@ dialog::backdrop {
   }
 }
 
-.chart-stage .chart-tooltip.is-scrollable {
+.chart-stage .chart-tooltip:is(.is-scrollable, .is-pinned) {
   pointer-events: auto;
   overscroll-behavior: contain;
   touch-action: pan-y;
@@ -2782,12 +2782,6 @@ dialog::backdrop {
 
 @media (max-width: 600px) {
   body:not(.has-settings) .chart-stage .chart-tooltip.is-comparison-line {
-    position: static;
-    width: auto;
-    max-width: none;
-    max-height: none;
-    overflow: visible;
-    margin-top: 8px;
-    pointer-events: auto;
+    max-height: min(55dvh, 360px);
   }
 }
