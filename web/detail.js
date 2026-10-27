@@ -11,7 +11,7 @@ async function load() {
   points = (await metricsResponse.json()).points || [];
   images = [...(artwork.images || [])].sort((a, b) => a.image_order - b.image_order);
   document.title = `${artwork.title} | X Art Analytics`;
-  document.querySelector('#detail').innerHTML = `<header class="detail-header"><div><p class="kicker">ARTWORK DETAIL</p><h1>${artwork.title}</h1><p>${new Date(artwork.posted_at).toLocaleString('ja-JP')} 投稿</p></div><a class="x-link" href="${artwork.url}" target="_blank" rel="noreferrer">Xで開く ↗</a></header><div class="detail-grid"><div class="detail-image" id="image-viewer"></div><div><div class="kpis"><div><span>LIKES</span><strong>${number(artwork.latest?.likes)}</strong></div><div><span>REPOSTS</span><strong>${number(artwork.latest?.retweets)}</strong></div><div><span>IMPRESSIONS</span><strong>${number(artwork.latest?.impressions)}</strong></div></div><div class="chart-panel"><div class="chart-toolbar"><div class="metric-tabs">${['likes','retweets','impressions'].map(metric => `<button class="${metric === state.metric ? 'active' : ''}" data-metric="${metric}">${metric === 'likes' ? 'Likes' : metric === 'retweets' ? 'RT' : 'Impressions'}</button>`).join('')}</div><div class="mode-tabs"><button class="active" data-mode="absolute">累積値</button><button data-mode="delta">増加量</button></div></div><div id="chart"></div></div></div></div><section class="log-section"><h2>計測ログ</h2><div class="log-table"><div class="log-row log-head"><span>経過時間</span><span>計測日時</span><span>Likes</span><span>RT</span><span>Imp</span></div>${points.map(point => `<div class="log-row"><span>${point.stage}</span><span>${new Date(point.measured_at).toLocaleString('ja-JP')}</span><span>${number(point.likes)}</span><span>${number(point.retweets)}</span><span>${number(point.impressions)}</span></div>`).join('')}</div></section>`;
+  document.querySelector('#detail').innerHTML = `<header class="detail-header"><div class="detail-image" id="image-viewer"></div><div class="detail-post-copy"><p class="kicker">ARTWORK DETAIL</p><h1>${artwork.title}</h1><p>${new Date(artwork.posted_at).toLocaleString('ja-JP')} 投稿</p></div><a class="x-link" href="${artwork.url}" target="_blank" rel="noreferrer">Xで開く ↗</a></header><div class="detail-grid"><div><div class="kpis"><div><span>LIKES</span><strong>${number(artwork.latest?.likes)}</strong></div><div><span>REPOSTS</span><strong>${number(artwork.latest?.retweets)}</strong></div><div><span>IMPRESSIONS</span><strong>${number(artwork.latest?.impressions)}</strong></div></div><div class="chart-panel"><div class="chart-toolbar"><div class="metric-tabs">${['likes','retweets','impressions'].map(metric => `<button class="${metric === state.metric ? 'active' : ''}" data-metric="${metric}">${metric === 'likes' ? 'Likes' : metric === 'retweets' ? 'RT' : 'Impressions'}</button>`).join('')}</div><div class="mode-tabs"><button class="active" data-mode="absolute">累積値</button><button data-mode="delta">増加量</button></div></div><div id="chart"></div></div></div></div><section class="log-section"><h2>計測ログ</h2><div class="log-table"><div class="log-row log-head"><span>経過時間</span><span>計測日時</span><span>Likes</span><span>RT</span><span>Imp</span></div>${points.map(point => `<div class="log-row"><span>${point.stage}</span><span>${new Date(point.measured_at).toLocaleString('ja-JP')}</span><span>${number(point.likes)}</span><span>${number(point.retweets)}</span><span>${number(point.impressions)}</span></div>`).join('')}</div></section>`;
   renderCarousel();
   document.querySelectorAll('[data-metric]').forEach(button => button.onclick = () => { state.metric = button.dataset.metric; updateTabs(); drawChart(); });
   document.querySelectorAll('[data-mode]').forEach(button => button.onclick = () => { state.mode = button.dataset.mode; updateTabs(); drawChart(); });
@@ -22,6 +22,12 @@ async function load() {
   };
   window.addEventListener('resize', drawChart);
   document.addEventListener('keydown', handleKeydown);
+  document.addEventListener('pointerdown', event => {
+    if (event.target.closest('.chart-point, .bar-wrap')) return;
+    const tooltip = document.querySelector('#chart .chart-tooltip');
+    if (tooltip) tooltip.hidden = true;
+    document.querySelectorAll('.chart-point.active').forEach(point => point.classList.remove('active'));
+  });
   const detailHeader = document.querySelector('.detail-header');
   const detailActions = document.createElement('div');
   detailActions.className = 'detail-actions';
@@ -36,9 +42,10 @@ async function load() {
     profileLink.textContent = '𝕏プロフィール ↗';
     detailActions.append(profileLink);
   }
-  detailHeader.append(detailActions);
+  detailHeader.querySelector('.detail-post-copy').append(detailActions);
   setupCharacterEditor(artwork);
   setupTagList(artwork);
+  document.querySelector('.detail-grid').after(document.querySelector('.character-editor'), document.querySelector('.tag-list-section'));
   drawChart();
 }
 
@@ -173,6 +180,7 @@ function changeImage(index) {
 }
 
 function handleKeydown(event) {
+  if (event.target.closest('input, textarea, select, button')) return;
   if (event.key === 'ArrowLeft') changeImage(state.imageIndex - 1);
   if (event.key === 'ArrowRight') changeImage(state.imageIndex + 1);
 }
@@ -250,7 +258,7 @@ function getChartPointValue(index) {
   if (!point) return null;
   if (state.mode === 'absolute' || index === 0) return point[state.metric];
   const previous = points[index - 1];
-  return previous == null || previous[state.metric] == null || point[state.metric] == null ? point[state.metric] : point[state.metric] - previous[state.metric];
+  return previous == null || previous[state.metric] == null || point[state.metric] == null ? null : point[state.metric] - previous[state.metric];
 }
 
 function createChartTooltipMarkup(index) {
@@ -310,12 +318,15 @@ function bindChartInteractions() {
       showTooltip(element, touch.clientX, touch.clientY);
     };
 
+    element.addEventListener('focus', () => showTooltip(element));
+    element.addEventListener('blur', hideTooltip);
     element.addEventListener('pointerenter', event => {
       showOnPointer(event);
       setActivePoint(element, true);
     });
     element.addEventListener('pointermove', showOnPointer);
-    element.addEventListener('pointerleave', () => {
+    element.addEventListener('pointerleave', event => {
+      if (event.pointerType === 'touch') return;
       hideTooltip();
       setActivePoint(element, false);
     });
@@ -329,8 +340,8 @@ function bindChartInteractions() {
     }, { passive: false });
     element.addEventListener('touchmove', showOnTouch, { passive: false });
     element.addEventListener('touchend', () => {
-      hideTooltip();
-      setActivePoint(element, false);
+      // Keep the selected value readable after a tap; tapping elsewhere clears it.
+      setActivePoint(element, true);
     });
     element.addEventListener('touchcancel', () => {
       hideTooltip();
@@ -338,19 +349,19 @@ function bindChartInteractions() {
     });
   });
 
-  chart.addEventListener('pointerleave', hideTooltip);
+  chart.onpointerleave = event => { if (event.pointerType !== 'touch') hideTooltip(); };
 }
 
 function drawChart() {
-  const values = points.map((point, index) => state.mode === 'absolute' || index === 0 ? point[state.metric] : point[state.metric] - points[index - 1][state.metric]);
+  const values = points.map((_, index) => getChartPointValue(index));
   if (state.mode === 'delta') {
     drawDeltaBarChart(values);
     return;
   }
   const validValues = values.filter(value => value != null);
   const max = Math.max(...validValues, 1);
-  const width = 800;
-  const height = 280;
+  const width = Math.max(260, document.querySelector('#chart').clientWidth || 800);
+  const height = window.matchMedia('(max-width: 760px)').matches ? 240 : 280;
   const left = 42;
   const right = 16;
   const top = 18;
@@ -394,7 +405,7 @@ function drawChart() {
     return lines.map((line, lineIndex) => `<text x="${x(index)}" y="${baseY + lineIndex * 12}" class="chart-label" text-anchor="middle">${line}</text>`).join('');
   }).join('');
   const xAxisHitArea = `<rect x="${left}" y="${height - bottom}" width="${chartWidth}" height="${bottom}" fill="transparent" data-x-axis-label="true" style="cursor:pointer"/>`;
-  const plotMarkers = values.map((value, index) => value == null ? '' : `<circle class="chart-point" data-chart-point-index="${index}" cx="${x(index)}" cy="${y(value)}" r="6"></circle>`).join('');
+  const plotMarkers = values.map((value, index) => value == null ? '' : `<circle class="chart-point" tabindex="0" data-chart-point-index="${index}" cx="${x(index)}" cy="${y(value)}" r="6"></circle>`).join('');
   document.querySelector('#chart').innerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.metric}の推移">${grid}<line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="chart-axis"/><polygon points="${areaPoints}" class="chart-area"/><polyline points="${linePoints}" class="chart-line"/>${plotMarkers}${valueLabels}${labels}${xAxisHitArea}</svg><div class="chart-tooltip" hidden></div><div class="chart-legend"><span class="chart-legend-line"></span><span>${getXAxisModeLabel()}（タップで切替）</span></div>`;
   bindChartInteractions();
 }
@@ -426,7 +437,7 @@ function drawDeltaBarChart(values) {
     const xLabelText = String(xAxisLabels[index]).split('\n').join('<br>');
     const xLabel = visibleXIndexes.has(index) ? `<small class="bar-x-label" data-x-axis-label="true" tabindex="0">${xLabelText}</small>` : '<small class="bar-x-label"></small>';
     const height = value == null ? 0 : Math.max(4, value / max * 100);
-    return `<div class="bar-wrap" data-chart-point-index="${index}" title="${xAxisLabels[index]}: ${number(value)}">${valueLabel}<div class="bar" style="height:${height}%"></div>${xLabel}</div>`;
+    return `<div class="bar-wrap" data-chart-point-index="${index}" title="${xAxisLabels[index]}: ${number(value)}">${valueLabel}<div class="bar" style="height:${height}%;${value == null ? 'visibility:hidden' : ''}"></div>${xLabel}</div>`;
   }).join('');
   const tickCount = Math.min(4, Math.max(1, Math.floor(max)));
   const yLabels = Array.from({ length: tickCount + 1 }, (_, index) => `<span>${number(Math.round(max * (tickCount - index) / tickCount))}</span>`).join('');

@@ -1,0 +1,52 @@
+{
+  "1440x800": {
+    "characters": 100,
+    "fields": [
+      "chart",
+      "source",
+      "period",
+      "x",
+      "y"
+    ],
+    "descriptions": 0,
+    "labels": [
+      "種類",
+      "期間",
+      "横軸",
+      "縦軸"
+    ],
+    "summaries": [
+      "0件",
+      "凡例あり",
+      "0件",
+      "平均 · キャラクター"
+    ],
+    "axes_bottom": 517.78125,
+    "body_bottom": 783
+  },
+  "390x844": {
+    "characters": 100,
+    "fields": [
+      "chart",
+      "source",
+      "period",
+      "x",
+      "y"
+    ],
+    "descriptions": 0,
+    "labels": [
+      "種類",
+      "期間",
+      "横軸",
+      "縦軸"
+    ],
+    "summaries": [
+      "0件",
+      "凡例あり",
+      "0件",
+      "平均 · キャラクター"
+    ],
+    "axes_bottom": 790.515625,
+    "body_bottom": 843.0
+  }
+}

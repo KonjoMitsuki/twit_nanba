@@ -1,0 +1,246 @@
+/* MY VIEWS editor; the overview, calendar and artwork pages keep their styles. */
+.apple-app [hidden] { display: none !important; }
+body[data-section="views"] {
+  --ink: #323630;
+  --muted: #41463c;
+  --accent: #447869;
+  --accent-hover: #41463c;
+  --accent-soft: #edf3ef;
+  --lime: #edf3ef;
+}
+#views-workspace:not([hidden]) { display: block; }
+#views-workspace.settings-open:not([hidden]) { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 16px; align-items: start; }
+body[data-section="views"] .workspace-topbar { position: sticky; top: 0; z-index: 25; padding-block: 12px; min-height: 80px; background: var(--canvas); }
+body:not([data-section="views"]) :is(#undo-settings, #discard-changes) { display: none; }
+.settings-dock { position: sticky; top: 96px; display: flex; flex-direction: column; min-width: 0; height: calc(100dvh - 112px); max-height: 920px; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); }
+.settings-dock .dialog-head { flex: none; padding: 16px; border-bottom: 1px solid var(--line); }
+.settings-dock .dialog-head h2 { max-width: 220px; margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.settings-dock .dialog-head .eyebrow { margin: 0; }
+.settings-dock .settings-context { font-size: 11px; }
+.settings-dock > p { margin: 8px 16px; flex: none; }
+.settings-dock #settings-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 12px 20px; scroll-padding: 16px; }
+.settings-dock details[data-section] { border-bottom: 1px solid var(--line); }
+.settings-dock summary { cursor: pointer; padding: 14px 4px; list-style: none; display: grid; gap: 4px; }
+.settings-dock summary::-webkit-details-marker, .action-menu summary::-webkit-details-marker { display: none; }
+.settings-dock details[data-section] > summary::after { content: '+'; grid-column: 2; grid-row: 1 / 3; align-self: center; font-size: 20px; }
+.settings-dock details[open][data-section] > summary::after { content: '−'; }
+.settings-dock summary span { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.settings-section-content { padding: 0 2px 16px; }
+.settings-section-content > button { margin: 4px 0; width: 100%; }
+.settings-dock .source-card { padding: 10px; }
+.settings-dock .source-card .choice-use { font-size: 11px; }
+.settings-dock .chart-card { min-height: 48px; padding: 8px; }
+.settings-dock :is(input, select, textarea) { max-width: 100%; min-width: 0; }
+.settings-dock .formula-card { padding: 10px; }
+.metric-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.metric-chips button { max-width: 100%; border: 1px solid var(--line); border-radius: 99px; background: var(--accent-soft); padding: 6px 10px; overflow-wrap: anywhere; }
+.settings-dock .filter-group-head { flex-wrap: wrap; }
+.settings-dock .filter-group-join-wrap { width: 100%; order: 3; }
+.settings-dock .filter-rule { display: block; border: 1px solid var(--line); border-radius: 12px; padding: 0 8px; background: var(--accent-soft); }
+.filter-rule > summary { font-size: 12px; overflow-wrap: anywhere; }
+.filter-rule-editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding-bottom: 8px; }
+.settings-dock .filter-rule-editor input { width: 100%; }
+.field-error { margin: 6px 0; font-size: 12px; }
+.settings-dock :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+#toggle-lock { width: auto; gap: 6px; padding: 0 10px; white-space: nowrap; }
+#sheet-handle { display: none; }
+.panel.is-selected { border-color: var(--accent); }
+.has-settings .panel.is-refreshing .chart-container { opacity: .65; }
+.panel.is-refreshing { position: relative; }
+.panel.is-refreshing::after { content: '更新中…'; position: absolute; right: 16px; bottom: 12px; padding: 2px 8px; background: var(--paper); color: var(--accent); font-size: 12px; pointer-events: none; }
+.panel-quick-controls { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
+.panel-quick-controls select { width: auto; min-width: 0; max-width: 100%; min-height: 36px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font-size: 12px; }
+.action-menu { position: relative; flex: none; }
+.action-menu > summary { display: grid; place-items: center; min-width: 44px; min-height: 44px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper); cursor: pointer; list-style: none; font-weight: 700; }
+.action-menu > div { position: absolute; right: 0; top: 100%; z-index: 22; display: grid; gap: 6px; width: 230px; max-width: calc(100vw - 32px); padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); box-shadow: var(--shadow-panel); }
+.action-menu button { width: 100%; text-align: left; }
+.mobile-view-select { display: none; }
+body[data-section="views"].views-collapsed .app-shell { grid-template-columns: 74px minmax(0,1fr); }
+body[data-section="views"].views-collapsed .sidebar :is(.nav-heading, .sidebar-heading, .sidebar-create, .sidebar-bottom, .workspace-brand > span:last-child, .primary-nav a > span, #view-list button > span) { display: none; }
+body[data-section="views"].views-collapsed .sidebar { padding-inline: 8px; }
+body[data-section="views"].views-collapsed .sidebar :is(a, #view-list button) { justify-content: center; padding-inline: 8px; }
+body[data-section="views"].views-collapsed .workspace-brand { padding: 0; }
+@media (max-width: 1279px) and (min-width: 1024px) {
+  body[data-section="views"] .app-shell { grid-template-columns: 190px minmax(0,1fr); }
+  #views-workspace.settings-open:not([hidden]) { grid-template-columns: minmax(0,1fr) 310px; }
+  .apple-app[data-section="views"] #workspace { padding-inline: 16px; }
+  .apple-app[data-section="views"] .workspace-topbar { padding-inline: 16px; }
+}
+@media (max-width: 1023px) {
+  #views-workspace.settings-open:not([hidden]) { display: block; padding-bottom: 55dvh; }
+  .has-settings[data-section="views"] { --sheet-size: 52dvh; }
+  .has-settings.sheet-expanded[data-section="views"] { --sheet-size: 68dvh; }
+  .settings-dock { position: fixed; z-index: 35; top: auto; bottom: 0; left: 0; right: 0; width: 100%; height: var(--sheet-size,52dvh); max-height: none; border-radius: 16px 16px 0 0; box-shadow: 0 -4px 20px rgb(50 54 48 / 12%); padding-bottom: env(safe-area-inset-bottom); }
+  #sheet-handle { display: grid; place-items: center; flex: none; width: 100%; min-height: 24px; border: 0; background: transparent; touch-action: none; }
+  #sheet-handle span { width: 36px; height: 4px; background: var(--muted); border-radius: 4px; }
+  .settings-dock .dialog-head { padding: 4px 16px 8px; }
+  .settings-dock .dialog-head :is(.eyebrow, .settings-context, .settings-badge) { display: none; }
+  .settings-dock .dialog-head h2 { max-width: min(75vw, 640px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .settings-open .panel.is-selected { position: fixed; z-index: 26; left: 12px; right: 12px; top: 106px; height: calc(100dvh - var(--sheet-size) - 118px); overflow: auto; margin: 0; background: var(--paper); }
+  .settings-open .panel.is-selected :is(.panel-controls, .panel-quick-controls, .panel-meta, .panel-footnote) { display: none; }
+  .settings-open .panel.is-selected .panel-head { padding: 6px 12px; }
+  .settings-open .panel.is-selected .chart-container { padding-top: 0; }
+  .settings-open .panel.is-selected .panel-title h2 { font-size: 13px; }
+  .settings-dock :is(button,select,input:not([type="radio"]):not([type="checkbox"])) { min-height: 44px; }
+}
+@media (max-width: 767px) {
+  body[data-section="views"] .workspace-topbar { top: 0; padding: 8px 12px; }
+  body[data-section="views"] .workspace-title { display: none; }
+  body[data-section="views"] .mobile-topbar { display: none; }
+  body[data-section="views"] .header-actions { justify-content: flex-start; gap: 6px; }
+  body[data-section="views"] .mobile-view-select { display: block; flex: 1; min-width: 120px; }
+  .mobile-view-select select { width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+  body[data-section="views"] #save-status { width: 100%; order: 2; margin: 0; font-size: 12px; }
+  body[data-section="views"] :is(#undo-settings,#discard-changes,#refresh) { min-height: 44px; font-size: 12px; padding-inline: 8px; }
+  body[data-section="views"] .sidebar { display: none; }
+  body[data-section="views"].navigation-open .sidebar { display: flex; }
+  body[data-section="views"] #collapse-views { display: none; }
+  .has-settings[data-section="views"] .demo-banner { display: none; }
+  .has-settings[data-section="views"] .bottom-nav { display: none; }
+  .has-settings[data-section="views"] .header-actions #refresh { display: none; }
+  .settings-open .panel.is-selected { top: 112px; height: calc(100dvh - var(--sheet-size) - 122px); }
+  .apple-app .panel-quick-controls select { min-height: 44px; }
+  .apple-app .action-menu button { min-height: 44px; }
+  .apple-app .panel-controls { flex-wrap: wrap; }
+  .apple-app .panel-title { min-width: 0; }
+}
+@media (max-height: 480px) and (max-width: 1023px) {
+  .has-settings[data-section="views"] .workspace-topbar { min-height: 54px; padding-block: 4px; }
+  .has-settings[data-section="views"] :is(.workspace-title,#save-status,#undo-settings,#discard-changes) { display: none; }
+  .settings-open .panel.is-selected { top: 60px; height: calc(100dvh - var(--sheet-size) - 66px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-dock *, .panel { transition: none; scroll-behavior: auto; }
+}
+#mobile-views-menu { display: none; }
+@media (max-width: 767px) {
+  body[data-section="views"] #mobile-views-menu { display: block; min-height: 44px; }
+  body[data-section="views"].has-settings #mobile-views-menu { display: none; }
+}
+.settings-dock .dialog-head > div { min-width: 0; flex: 1; }
+.settings-dock .settings-context { white-space: normal; overflow-wrap: anywhere; }
+body.has-settings[data-section="views"] .workspace-topbar { z-index: 40; }
+@media (max-width: 1023px) {
+  body.has-settings[data-section="views"] .workspace-title { display: none; }
+  body.has-settings[data-section="views"] .workspace-topbar { min-height: 70px; }
+  .settings-open .panel.is-selected { top: var(--editor-preview-top, 112px); height: calc(100dvh - var(--sheet-size) - var(--editor-preview-top,112px) - 8px); }
+}
+.settings-dock .toggle-label input:focus + .toggle-switch { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 1023px) {
+  #sheet-handle { min-height: 44px; }
+}
+.action-menu:not([open]) > div { display: none; }
+body[data-section="views"] #workspace :is(button,input,select,summary) { scroll-margin-top: 160px; }
+#save-status::before { display: none; }
+@media (max-width: 767px) {
+  .apple-app[data-section="views"] .page-heading > .page-description { display: none; }
+  .apple-app[data-section="views"] .view-toolbar { padding: 12px; gap: 6px; }
+  .apple-app[data-section="views"] .view-actions { flex-wrap: nowrap; gap: 6px; }
+  .apple-app[data-section="views"] .view-actions .compact-select { flex: 1; min-width: 0; }
+  .apple-app[data-section="views"] .view-actions .compact-select select { width: 100%; max-width: 130px; }
+  .apple-app[data-section="views"] #toggle-lock { font-size: 11px; min-width: 0; padding-inline: 6px; }
+  .apple-app[data-section="views"] .layout-label, .apple-app[data-section="views"] #layout-label { display: none; }
+  .apple-app[data-section="views"] .view-edit-hint { font-size: 11px; padding-block: 4px; }
+  .apple-app[data-section="views"] .insight-strip { padding-block: 10px; }
+  .apple-app[data-section="views"] .insight-item { padding: 8px; }
+  .apple-app[data-section="views"] .insight-item .insight-label { font-size: 10px; }
+  .apple-app[data-section="views"] .insight-item .insight-note { display: none; }
+  body[data-section="views"] #save-status { max-width: none; }
+}
+/* Compact chart choices keep the data and axes sections close to the preview. */
+.settings-dock .chart-card { flex-direction: row; align-items: center; gap: 6px; }
+body[data-section="views"] .sidebar-create.danger { margin-block: 12px; border-top: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--danger); font-size: 11px; }
+body[data-section="views"] #save-status[data-error] { max-width: 420px; max-height: 3.5em; overflow: auto; overflow-wrap: anywhere; }
+
+/* Density budget: three short sections, with explanations in native popovers. */
+#views-workspace.settings-open:not([hidden]) { grid-template-columns: minmax(0,1fr) 360px; }
+.settings-dock .dialog-head { min-height: 52px; margin: 0; padding: 6px 12px; gap: 8px; }
+.settings-dock .dialog-head h2 { max-width: calc(100% - 52px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; }
+.settings-dock #settings-body { padding: 0 10px 8px; }
+.settings-dock details[data-section] > summary { display: flex; align-items: center; min-height: 32px; gap: 8px; padding: 5px 2px; }
+.settings-dock details[data-section] > summary strong { font-size: 12px; font-weight: 600; }
+.settings-dock details[data-section] > summary > span { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.settings-dock details[open][data-section] > summary > span { display: none; }
+.settings-dock details[data-section] > summary::after { width: 14px; flex: none; font-size: 16px; }
+.settings-dock .settings-section-content { padding: 0 0 6px; }
+.settings-dock .settings-field { display: grid; grid-template-columns: 48px minmax(0,1fr); gap: 6px; align-items: center; min-height: 44px; margin: 0 0 4px; }
+.settings-dock .setting-label { display: flex; align-items: center; min-width: 0; font-size: 11px; }
+.settings-dock .setting-label > :is(label,span) { font-size: inherit; font-weight: 500; margin: 0; overflow-wrap: anywhere; }
+.settings-dock .setting-input { display: flex; align-items: center; min-width: 0; gap: 2px; }
+.settings-dock .setting-input > :is(input,select,textarea) { flex: 1; width: 100%; min-height: 44px; padding: 6px 8px; font-size: 12px; }
+.settings-dock .setting-input > input[type="color"] { flex: none; width: 44px; padding: 3px; }
+.settings-dock .setting-input > textarea { min-height: 70px; }
+.settings-dock .format-switch, .settings-dock .source-switch, .settings-dock .period-switch { display: flex; gap: 2px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.settings-dock .format-switch { overflow-x: auto; padding: 2px; }
+.settings-dock .format-switch .chart-card { display: grid; place-items: center; flex: 1 0 44px; min-width: 44px; min-height: 44px; height: 44px; padding: 8px; margin: 0; border-radius: 8px; }
+.settings-dock .format-switch .chart-card .icon { width: 20px; height: 20px; }
+.settings-dock .source-switch { flex: 1; }
+.settings-dock .source-switch .source-card { display: grid; place-items: center; min-width: 44px; min-height: 44px; padding: 4px; margin: 0; flex: 1; border-radius: 8px; font-size: 11px; white-space: nowrap; }
+.settings-dock .period-switch { flex: 1; justify-content: space-between; }
+.settings-dock .period-switch button { flex: 1; min-width: 44px; min-height: 44px; padding: 4px 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); font-size: 11px; white-space: nowrap; }
+.settings-dock .period-switch button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.settings-dock .metric-picker { display: flex; flex: 1; min-width: 0; flex-wrap: wrap; align-items: center; gap: 3px; }
+.settings-dock .metric-picker .metric-chips { display: contents; }
+.settings-dock .metric-chips { gap: 3px; margin: 0; }
+.settings-dock .metric-chips button { min-height: 44px; padding: 4px 6px; font-size: 11px; }
+.settings-dock .metric-picker select { flex: 1; min-width: 72px; max-width: 100%; min-height: 44px; padding: 4px; font-size: 11px; }
+.settings-dock [data-setting-control="columns"] .setting-input { flex-wrap: wrap; }
+.settings-dock [data-setting-control="columns"] .metric-chips { width: 100%; }
+.settings-dock .setting-info { display: grid; place-items: center; flex: 0 0 44px; width: 44px; min-height: 44px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 14px; }
+.setting-popover { width: min(340px,calc(100vw - 32px)); max-height: min(440px,70dvh); margin: auto; padding: 16px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); color: var(--ink); font: 13px/1.7 var(--font); box-shadow: var(--shadow-dialog); }
+.setting-popover button { min-height: 44px; padding: 8px; }
+.setting-popover.formula-add-menu:popover-open { display: grid; gap: 4px; }
+.settings-dock .settings-panel-actions { display: flex; gap: 4px; padding-top: 6px; }
+.settings-dock .settings-panel-actions button { flex: 1; min-width: 44px; min-height: 44px; padding: 4px; border: 0; border-radius: 8px; background: transparent; font-size: 12px; }
+.settings-dock .settings-panel-actions button:hover { background: var(--accent-soft); }
+.settings-dock .settings-section-content > .quiet-button { width: auto; min-height: 44px; margin: 0; padding-block: 4px; }
+.settings-dock .field-error { grid-column: 1 / -1; margin: 0 0 4px; font-size: 11px; }
+.settings-dock .toggle-label { justify-content: flex-end; margin: 0; padding: 0 8px; }
+.settings-dock .table-sort-rule { display: block; padding: 6px; }
+.settings-dock .sort-controls { display: flex; justify-content: flex-end; gap: 4px; }
+.settings-dock .sort-controls button { display: grid; place-items: center; min-width: 44px; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.settings-dock .formula-card { padding: 8px; }
+.settings-dock .formula-card > button { display: grid; place-items: center; min-width: 44px; min-height: 44px; margin-left: auto; }
+.settings-dock .filter-group { padding: 6px; }
+.settings-dock .filter-group-head { justify-content: flex-end; }
+.settings-dock .filter-group-head :is(select,button) { width: auto; min-width: 44px; min-height: 44px; }
+.settings-dock .filter-rule > summary { min-height: 44px; padding: 6px; }
+.panel-footnote { white-space: nowrap; overflow-x: auto; }
+@media (max-width: 1023px) {
+  #views-workspace.settings-open:not([hidden]) { display: block; }
+  .settings-open .panel.is-selected { display: flex; flex-direction: column; overflow: hidden; }
+  .settings-open .panel.is-selected .panel-head { flex: none; }
+  .settings-open .panel.is-selected .chart-container { flex: 1; min-height: 0; overflow: auto; }
+  .settings-open .panel.is-selected .panel-footnote { display: block; flex: none; padding: 4px 8px; font-size: 10px; }
+}
+@media (max-width: 360px) {
+  .settings-dock .format-switch { display: grid; grid-template-columns: repeat(7,minmax(44px,1fr)); overflow-x: auto; }
+  .settings-dock .format-switch .chart-card { min-width: 44px; }
+}
+.settings-dock .setting-info .icon { width: 16px; height: 16px; }
+.settings-dock .setting-label { font-size: 12px; }
+.panel { scroll-margin-top: 110px; }
+@media (max-width: 1023px) {
+  .has-settings .views-preview { visibility: hidden; }
+  .has-settings .views-preview .panel.is-selected { visibility: visible; }
+}
+.setting-popover button { min-width: 44px; }
+/* Keep the plot itself visible when the editor takes most of a phone screen. */
+@media (max-width: 1023px) {
+  .has-settings.sheet-expanded[data-section="views"] { --sheet-size: 62dvh; }
+  .settings-open .panel.is-selected:not(.is-table) .chart-container { display: flex; flex-direction: column; overflow: hidden; }
+  .settings-open .panel.is-selected .chart-toolbar { flex: none; flex-wrap: nowrap; gap: 2px; margin: 0; padding: 0; }
+  .settings-open .panel.is-selected .chart-toolbar > div { flex-wrap: nowrap; gap: 2px; }
+  .settings-open .panel.is-selected .chart-toolbar button { min-width: 44px; min-height: 44px; padding: 2px; font-size: 11px; white-space: nowrap; }
+  .settings-open .panel.is-selected .chart-toolbar [data-chart-action="reset"] { width: 44px; font-size: 0; }
+  .settings-open .panel.is-selected .chart-toolbar [data-chart-action="reset"]::after { content: '↺'; font-size: 20px; }
+  .settings-open .panel.is-selected .chart-stage { flex: 1; min-height: 0; }
+  .settings-open .panel.is-selected .chart-svg { width: 100%; height: 100%; }
+  .settings-open .panel.is-selected .chart-legend { display: flex; flex: none; flex-wrap: nowrap; max-height: 44px; overflow-x: auto; margin: 0; padding: 0; }
+  .settings-open .panel.is-selected .chart-legend button { flex: none; min-height: 44px; }
+  .settings-open .panel.is-selected :is(.chart-gesture-help,.chart-data) { display: none; }
+}
+@media (max-height: 480px) and (max-width: 1023px) {
+  .has-settings.sheet-expanded[data-section="views"] { --sheet-size: 55dvh; }
+  .settings-open .panel.is-selected :is(.chart-toolbar,.chart-legend) { display: none; }
+}

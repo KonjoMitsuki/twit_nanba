@@ -382,3 +382,45 @@ def test_post_plot_card_uses_requested_stage_and_images(client):
             reposts,
             stage,
         )
+
+
+def test_bulk_view_delete_endpoints_preserve_measurements_and_other_profile(client):
+    """The UI deletes one view at a time; only view settings may be affected."""
+    import sqlite3
+
+    a, b = profile_headers(client), profile_headers(client, 1)
+    artwork = app_db.create_artwork(
+        tweet_id="reset-integrity", url="https://example.test/reset",
+        title="残す作品", posted_at="2026-10-01T23:59:00+09:00",
+        image_urls=["https://example.test/image.jpg"], characters=["A"],
+    )
+    app_db.add_metric_snapshot(
+        artwork, stage="24h", elapsed_seconds=86400,
+        measured_at="2026-10-02T23:59:00+09:00", likes=42,
+    )
+    app_db.add_account_metric(123, "2026-10-02T23:59:00+09:00")
+
+    def measurements():
+        with sqlite3.connect(app_db.DB_PATH) as connection:
+            return {
+                table: connection.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
+                for table in ["artworks", "artwork_images", "artwork_tags", "metric_snapshots", "account_metrics"]
+            }
+
+    before = measurements()
+    views = [client.post("/api/analytics/views", headers=a, json={"name":name}).json()
+             for name in ["削除1", "削除2", "ロック中"]]
+    locked = views[-1]
+    assert client.patch(
+        f"/api/analytics/views/{locked['id']}/lock", headers=a,
+        json={"locked":True, "revision":locked["revision"]},
+    ).status_code == 200
+    other = client.post("/api/analytics/views", headers=b, json={"name":"別利用者"}).json()
+    for view in views[:-1]:
+        assert client.delete(f"/api/analytics/views/{view['id']}", headers=a).status_code == 204
+    assert client.delete(f"/api/analytics/views/{locked['id']}", headers=a).status_code == 409
+    assert client.delete(f"/api/analytics/views/{other['id']}", headers=a).status_code == 404
+    remaining = client.get("/api/analytics/views", headers=a).json()["views"]
+    assert len(remaining) == 1 and remaining[0]["locked"]
+    assert client.get("/api/analytics/views", headers=b).json()["views"] == [other]
+    assert measurements() == before

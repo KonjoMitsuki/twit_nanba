@@ -3,49 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>分析 | X Art Analytics</title>
+    <title>分析ダッシュボード | twit_nanba</title>
     <link rel="stylesheet" href="/css/analytics.css" />
+    <link rel="stylesheet" href="/css/apple-hig.css" />
+    <link rel="stylesheet" href="/css/analytics-settings.css" />
   </head>
-  <body>
+  <body class="apple-app" data-page="analytics" data-section="dashboard">
     <a class="skip-link" href="#workspace">分析エリアへ</a>
     <div class="app-shell">
-      <aside class="sidebar" aria-label="ワークスペース">
-        <a class="workspace-brand" href="/"
-          ><span class="brand-mark">A</span
-          ><span>Art workspace<small>X Art Analytics</small></span></a
-        >
-        <nav class="primary-nav" aria-label="ページ">
-          <a href="/"><span data-icon="calendar"></span>カレンダー</a
-          ><a href="/analytics" aria-current="page"
-            ><span data-icon="chart"></span>データ分析<span class="prototype"
-              >BETA</span
-            ></a
-          >
-        </nav>
-        <div class="sidebar-heading">
-          MY VIEWS
-          <button
-            id="sidebar-add"
-            class="icon-button"
-            aria-label="ビューを追加"
-          >
-            <span data-icon="plus"></span>
-          </button>
-        </div>
-        <nav id="view-list" class="view-list" aria-label="保存したビュー"></nav>
-        <div class="sidebar-bottom">
-          <span class="private-label"
-            ><span data-icon="copy"></span>ビュー設定は利用者別</span
-          >
-          <div id="account"></div>
-        </div>
-      </aside>
+      <aside class="sidebar" aria-label="ワークスペース"></aside>
       <div class="main-shell">
         <header class="workspace-topbar">
-          <span class="breadcrumb"
-            >ワークスペース <span>/</span> データ分析</span
-          >
-          <div class="header-actions">
+          <div class="workspace-title"><h1 id="page-title">分析ダッシュボード</h1><p id="page-description">投稿・反応・フォロワーをまとめて確認</p></div>
+          <div class="header-actions"><button id="mobile-views-menu" class="quiet-button" type="button" aria-label="利用者とメニューを開く">メニュー</button><label class="mobile-view-select"><span class="sr-only">ビュー切替</span><select id="view-select"></select></label>
+            <label class="overview-month-label"><span class="sr-only">表示する月</span><input id="overview-month" type="month" min="2000-01" max="2200-12"></label>
+            <button id="overview-refresh" class="quiet-button" title="保存済みデータを再集計"><span data-icon="refresh"></span>更新</button>
+            <button id="overview-settings" class="primary-button" type="button">表示設定</button>
             <span id="save-status" role="status" aria-live="polite"></span
             ><button
               id="save-view"
@@ -58,7 +31,7 @@
             >
               <span data-icon="check"></span>保存
             </button>
-            <button id="refresh" class="quiet-button">
+            <button id="undo-settings" class="quiet-button" type="button" title="元に戻す (Ctrl/⌘+Z)" disabled>元に戻す</button><button id="discard-changes" class="quiet-button" type="button" hidden>破棄</button><button id="refresh" class="quiet-button">
               <span data-icon="refresh"></span>更新
             </button>
           </div>
@@ -69,32 +42,37 @@
           ><a href="/analytics">実データへ</a>
         </div>
         <main id="workspace" tabindex="-1">
-          <section class="page-heading">
-            <div>
-              <div class="page-symbol" data-icon="chart"></div>
-              <p class="eyebrow">EXPLORE YOUR ART</p>
-              <h1>データ分析</h1>
-              <p class="page-description">
-                気になる視点を、あなただけのビューに。
-              </p>
+          <section id="overview" aria-label="分析ダッシュボード">
+            <p class="overview-caption">現在のビュー：ダッシュボード <span>· 日本時間</span></p>
+            <p id="overview-error" class="error-message" role="alert" hidden></p>
+            <div id="overview-summary" class="overview-summary" aria-label="月間サマリー"></div>
+            <div class="overview-grid">
+              <section class="overview-card likes-card" id="overview-likes"><div class="overview-card-heading"><div><h2>いいね推移</h2><p>投稿日別 · 最新計測のいいね合計</p></div></div><div id="overview-likes-chart" class="overview-chart"></div></section>
+              <section class="overview-card followers-card" id="overview-followers"><div class="overview-card-heading"><div><h2>フォロワー推移</h2><p>期間中の増減と日別の推移</p></div></div><strong id="overview-follower-total" class="follower-total">—</strong><p id="overview-follower-note" class="follower-note"></p><div id="overview-followers-chart" class="overview-chart mini-chart"></div></section>
+              <section class="overview-card calendar-card" id="overview-calendar"><div class="overview-card-heading"><div><h2>投稿カレンダー</h2><p id="overview-calendar-caption"></p></div><div class="calendar-navigation"><button class="icon-button" data-month-step="-1" aria-label="前の月">‹</button><button class="icon-button" data-month-step="1" aria-label="次の月">›</button></div></div><div id="overview-calendar-grid" class="compact-calendar"></div></section>
+              <section class="overview-card highlights-card" id="overview-posts"><div class="overview-card-heading"><div><h2>反応の多かった投稿</h2><p>期間内のハイライト</p></div><a href="#posts" class="all-posts-link">すべて見る</a></div><div id="overview-highlights"></div></section>
             </div>
-            <button id="new-view" class="primary-button">
-              <span data-icon="plus"></span>ビューを作成
-            </button>
           </section>
-
+          <div id="views-workspace" hidden>
+          <div class="views-preview">
+          <section class="page-heading"><p class="page-description">目的別に分析レイアウトを保存・切り替え</p><button id="collapse-views" class="quiet-button" aria-expanded="true" title="MY VIEWS を折りたたむ" type="button">一覧を折りたたむ</button><button id="new-view" class="primary-button"><span data-icon="plus"></span>ビューを作成</button></section>
           <section id="analysis-content" hidden>
             <div class="view-toolbar">
-              <div class="view-title-wrap">
-                <span id="view-icon" data-icon="dashboard"></span
-                ><input
-                  id="view-name"
-                  aria-label="ビュー名"
-                  maxlength="100"
-                /><span id="layout-label" class="soft-badge"></span
-                ><span id="view-lock-state" class="soft-badge lock-badge" hidden
-                  ><span data-icon="lock"></span>ロック中</span
-                >
+              <div class="view-identity">
+                <p class="view-caption">
+                  現在のビュー <span class="view-edit-state">編集可能</span>
+                </p>
+                <div class="view-title-wrap">
+                  <span id="view-icon" data-icon="dashboard"></span
+                  ><input
+                    id="view-name"
+                    aria-label="ビュー名"
+                    maxlength="100"
+                  /><span id="layout-label" class="soft-badge"></span
+                  ><span id="view-lock-state" class="soft-badge lock-badge" hidden
+                    ><span data-icon="lock"></span>ロック中</span
+                  >
+                </div>
               </div>
               <div class="view-actions">
                 <label class="compact-select"
@@ -112,21 +90,19 @@
                   title="ビューをロック"
                 >
                   <span data-icon="lock"></span></button
-                ><button
-                  id="duplicate-view"
-                  class="icon-button"
-                  aria-label="ビューを複製"
                 >
-                  <span data-icon="copy"></span></button
-                ><button
-                  id="delete-view"
-                  class="icon-button danger"
-                  aria-label="ビューを削除"
-                >
-                  <span data-icon="trash"></span>
-                </button>
+                <details id="view-menu" class="action-menu"><summary aria-label="ビューのその他の操作">…</summary><div>
+                  <button id="rename-view" class="quiet-button" type="button">名前を変更</button>
+                  <button id="duplicate-view" class="quiet-button" type="button" aria-label="ビューを複製">ビューを複製</button>
+                  <button id="rebuild-view" class="quiet-button" type="button">テンプレートから作り直す</button>
+                  <button id="delete-view" class="quiet-button danger" type="button" aria-label="ビューを削除">ビューを削除</button>
+                </div></details>
               </div>
             </div>
+            <p class="view-edit-hint">
+              <span data-icon="info"></span>
+              上下ボタンで並べ替え。変更は「保存」で確定。
+            </p>
             <div
               id="single-tabs"
               class="single-tabs"
@@ -149,70 +125,17 @@
             <p>テンプレートから始めて、軸や集計方法を自由に変えられます。</p>
             <div id="starter-templates" class="template-grid"></div>
           </section>
+          </div><aside id="settings" class="settings-dock" aria-labelledby="settings-title" hidden>
+  <button id="sheet-handle" type="button" aria-label="設定シートの高さを切り替える" aria-expanded="false"><span></span></button>
+  <div class="dialog-head"><h2 id="settings-title">設定</h2><button id="close-settings" class="icon-button" type="button" aria-label="設定を閉じる"><span data-icon="close"></span></button></div>
+  <p id="settings-lock-message" hidden>ロック中のため編集できません</p>
+  <div id="settings-body"></div>
+</aside>
+          </div>
           <p id="page-error" class="error-message" role="alert" hidden></p>
         </main>
       </div>
     </div>
-    <dialog
-      id="settings"
-      class="settings-dialog"
-      aria-labelledby="settings-title"
-    >
-      <div class="dialog-head">
-        <div>
-          <p class="eyebrow">PANEL SETTINGS · パネル設定</p>
-          <p id="settings-context" class="settings-context"></p>
-          <div class="settings-title-row">
-            <span id="settings-type-badge" class="settings-badge"></span>
-            <h2 id="settings-title">パネルの設定</h2>
-          </div>
-        </div>
-        <button
-          id="close-settings"
-          class="icon-button"
-          aria-label="設定を閉じる"
-        >
-          <span data-icon="close"></span>
-        </button>
-      </div>
-      <div
-        id="settings-summary"
-        class="settings-summary"
-        aria-live="polite"
-      ></div>
-      <p id="settings-error" class="error-message" role="alert" hidden></p>
-      <nav class="settings-tabs" aria-label="設定カテゴリー">
-        <button data-tab="data" aria-pressed="true"><span data-icon="data"></span><span>基本</span></button
-        ><button data-tab="axes"><span data-icon="chart"></span><span>表示</span></button
-        ><button data-tab="filters"><span data-icon="filter"></span><span>絞り込み</span></button
-        ><button data-tab="style"><span data-icon="style"></span><span>見た目</span></button
-        ><button data-tab="advanced"><span data-icon="formula"></span><span>詳細</span></button>
-      </nav>
-      <div id="settings-body"></div>
-      <footer class="settings-footer">
-        <div class="settings-footer-left">
-          <span data-icon="check"></span>
-          <span id="settings-save-state">変更は「保存」で確定します</span>
-        </div>
-        <div class="settings-footer-actions">
-          <button id="undo-settings" class="quiet-button" type="button" disabled>
-            元に戻す
-          </button>
-          <button id="done-settings" class="quiet-button" type="button">
-            閉じる
-          </button>
-          <button
-            id="save-settings"
-            class="primary-button-sm"
-            type="button"
-            aria-label="ビュー設定を保存"
-            disabled
-          >
-            保存
-          </button>
-        </div>
-      </footer>
-    </dialog>
     <dialog
       id="create-dialog"
       class="create-dialog"
@@ -230,6 +153,14 @@
       </div>
       <div id="create-templates" class="template-grid"></div>
     </dialog>
+    <dialog id="reset-views-dialog" class="create-dialog" aria-labelledby="reset-views-title">
+      <div class="dialog-head"><h2 id="reset-views-title">すべてのビューをリセット</h2><button class="icon-button" data-close="reset-views-dialog" aria-label="閉じる">×</button></div>
+      <p id="reset-views-description"></p><p>作品・計測データは削除されません。ロック中のビューは残ります。</p>
+      <button id="download-views" class="quiet-button" type="button">JSONバックアップをダウンロード</button>
+      <label for="reset-views-count">確認のためビュー数を入力してください</label><input id="reset-views-count" inputmode="numeric" autocomplete="off">
+      <button id="confirm-reset-views" class="quiet-button danger" type="button" disabled>ビューを削除</button><p id="reset-views-error" role="alert"></p>
+    </dialog>
+    <dialog id="rebuild-dialog" class="create-dialog" aria-labelledby="rebuild-title"><div class="dialog-head"><h2 id="rebuild-title">テンプレートから作り直す</h2><button class="icon-button" data-close="rebuild-dialog" aria-label="閉じる">×</button></div><p>ビュー名は維持されます。保存するまで確定しません。</p><div id="rebuild-templates" class="template-grid"></div></dialog>
     <dialog
       id="panel-type-dialog"
       class="create-dialog panel-type-dialog"
@@ -237,7 +168,7 @@
     >
       <div class="dialog-head">
         <div>
-          <p class="eyebrow">ADD PANEL · パネル追加</p>
+          <p class="eyebrow">ADD PANEL</p>
           <h2 id="panel-type-title">表・グラフを追加</h2>
         </div>
         <button
@@ -248,9 +179,6 @@
           <span data-icon="close"></span>
         </button>
       </div>
-      <p class="panel-type-lead">
-        作りたいものから選んでください。あとから設定で自由に変更できます。
-      </p>
       <div id="panel-types" class="template-grid panel-type-grid"></div>
     </dialog>
     <dialog
@@ -331,10 +259,13 @@
       </div>
       <p id="conflict-error" role="alert"></p>
     </dialog>
+    <script src="/apple-shell.js"></script>
+    <script src="/overview.js"></script>
     <script src="/analytics-chart-interactions.js"></script>
     <script src="/analytics-charts.js"></script>
     <script src="/analytics-characters.js"></script>
     <script src="/analytics-table.js"></script>
+    <script src="/analytics-settings.js"></script>
     <script src="/analytics.js"></script>
   </body>
 </html>

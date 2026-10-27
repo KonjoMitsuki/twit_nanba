@@ -9,15 +9,34 @@
   <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/calendar.css">
   <link rel="stylesheet" href="/css/responsive.css">
+  <link rel="stylesheet" href="/css/calendar-navigation.css">
 </head>
 <body>
+  <div class="calendar-layout">
+  <aside class="calendar-sidebar" aria-label="ワークスペース">
+    <a class="calendar-brand" href="/analytics"><img src="/assets/apple-hig/brand.svg" width="34" height="34" alt=""><span>twit_nanba</span></a>
+    <p class="calendar-nav-heading">ANALYTICS</p>
+    <nav class="calendar-primary-nav" aria-label="ページ">
+      <a href="/analytics"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>ダッシュボード</span></a>
+      <a href="/" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><span>投稿カレンダー</span></a>
+      <a href="/analytics#likes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V4m0 16h16M8 16v-5m5 5V6m5 10V9"/></svg><span>いいね推移</span></a>
+      <a href="/analytics#followers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 16 5-5 4 3 8-9m-6 0h6v6"/></svg><span>フォロワー分析</span></a>
+      <a href="/analytics#views"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" transform="rotate(45 12 12)"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg><span>MY VIEWS</span></a>
+    </nav>
+  </aside>
   <main class="shell">
-    <header class="topbar"><a class="brand" href="/">X Art <em>Analytics</em></a><div class="topbar-meta"><a class="x-link" href="/analytics">データ分析 ↗</a><a id="tracked-profile-link" class="x-link profile-link" href="#" target="_blank" rel="noreferrer" hidden>𝕏プロフィール ↗</a><span class="eyebrow">CREATIVE LOG / 01</span></div></header>
+    <header class="topbar"><a class="brand" href="/">X Art <em>Analytics</em></a><div class="topbar-meta"><a id="tracked-profile-link" class="x-link profile-link" href="#" target="_blank" rel="noreferrer" hidden>𝕏プロフィール ↗</a><span class="eyebrow">CREATIVE LOG / 01</span></div></header>
     <section class="hero"><div><p class="kicker">MONTHLY ARCHIVE</p><h1 id="month-title">読み込み中</h1><p class="subline">作品の投稿と、その後の反応をひとつの景色で。</p></div><div class="month-controls"><button id="prev-month" class="icon-button" aria-label="前の月">←</button><button id="today" class="today-button">今日</button><button id="next-month" class="icon-button" aria-label="次の月">→</button><button id="patrol-now" class="today-button">🔍 新着チェック</button></div></section>
     <section class="summary" id="summary" aria-label="月間サマリー"></section>
     <section class="calendar-wrap"><div class="weekdays"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div><div id="calendar" class="calendar" aria-live="polite"></div></section>
   </main>
-
+  </div>
+  <nav class="calendar-mobile-nav" aria-label="ページ">
+    <a href="/analytics"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>分析</span></a>
+    <a href="/" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><span>カレンダー</span></a>
+    <a href="/analytics#followers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 16 5-5 4 3 8-9m-6 0h6v6"/></svg><span>詳細</span></a>
+    <a href="/analytics#views"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" transform="rotate(45 12 12)"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg><span>設定</span></a>
+  </nav>
   <script src="/app.js"></script>
 </body>
 </html>
