@@ -38,8 +38,9 @@
   const bottom = document.createElement("nav");
   bottom.className = "bottom-nav";
   bottom.setAttribute("aria-label", "モバイルナビゲーション");
+  const detailLabel = page === "detail" ? "投稿詳細" : "投稿一覧";
   const detailHref = page === "detail" ? location.pathname : `${analytics}#posts`;
-  bottom.innerHTML = [["dashboard", analytics, "分析", "dashboard"], ["calendar", "/", "カレンダー", "calendar"], ["detail", detailHref, "詳細", "followers"], ["views", `${analytics}#views`, "設定", "views"]].map(([key, href, label, symbol]) => `<a href="${href}" data-section="${key}" ${key === current ? 'aria-current="page"' : ""}>${icon(symbol)}<span>${label}</span></a>`).join("");
+  bottom.innerHTML = [["dashboard", analytics, "ダッシュボード", "dashboard"], ["calendar", "/", "カレンダー", "calendar"], ["detail", detailHref, detailLabel, "followers"], ["views", `${analytics}#views`, "保存ビュー", "views"]].map(([key, href, label, symbol]) => `<a href="${href}" data-section="${key}" ${key === current ? 'aria-current="page"' : ""}>${icon(symbol)}<span>${label}</span></a>`).join("");
   document.body.append(bottom);
   const menu = mobile.querySelector("button");
   const closeMenu = () => { document.body.classList.remove("navigation-open"); menu.setAttribute("aria-expanded", "false"); };
