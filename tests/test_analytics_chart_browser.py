@@ -45,8 +45,9 @@ def domain(page):
 def plot_point(page, x=0.5, y=0.5):
     return page.locator(".chart-svg").evaluate(
         """(el, ratios) => {
-      const b=el.getBoundingClientRect(), W=el.viewBox.baseVal.width;
-      return {x:b.x+(55+(W-77)*ratios[0])*b.width/W, y:b.y+(23+174*ratios[1])*b.height/245};
+      const p=el.closest('.chart-container').chartInfo.plot;
+      const point=new DOMPoint(p.l+p.pw*ratios[0],p.t+p.ph*ratios[1]).matrixTransform(el.getScreenCTM());
+      return {x:point.x,y:point.y};
     }""",
         [x, y],
     )
@@ -204,6 +205,7 @@ def test_touch_pinch_pan_and_inspect_mode():
         assert page.locator(".chart-tooltip-row").count() == 2
         page.get_by_role("button", name="移動", exact=True).tap()
         page.get_by_role("button", name="Y自動", exact=True).tap()
+        page.wait_for_function("document.querySelector('.chart-svg').dataset.yMode==='manual'")
         manual = domain(page)
         mid = plot_point(page)
         touch("touchStart", [mid])
@@ -368,7 +370,7 @@ def test_independent_axes_cursor_anchor_and_resets(chart_page):
     pos = plot_point(page, 0.25)
     page.mouse.move(**pos)
     ratio = page.evaluate("""pos => { for(let i=0;i<5;i++) document.querySelector('.chart-hit-area').dispatchEvent(
-        new WheelEvent('wheel',{bubbles:true,cancelable:true,clientX:pos.x,clientY:pos.y,deltaY:-70})); const e=new WheelEvent('wheel',{clientX:pos.x});const svg=document.querySelector('.chart-svg'),b=svg.getBoundingClientRect(),p=document.querySelector('#chart').chartInfo.plot;return ((e.clientX-b.x)*p.W/b.width-p.l)/p.pw; }""", pos)
+        new WheelEvent('wheel',{bubbles:true,cancelable:true,clientX:pos.x,clientY:pos.y,deltaY:-70})); const e=new WheelEvent('wheel',{clientX:pos.x});const svg=document.querySelector('.chart-svg'),p=document.querySelector('#chart').chartInfo.plot;return (new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.getScreenCTM().inverse()).x-p.l)/p.pw; }""", pos)
     page.evaluate("() => new Promise(requestAnimationFrame)")
     zoomed = domain(page)
     anchor = lambda r: r[0] + (r[1]-r[0])*ratio
@@ -386,6 +388,11 @@ def test_independent_axes_cursor_anchor_and_resets(chart_page):
     scaled_x = domain(page)
     assert scaled_x[1] == pytest.approx(zoomed[1], abs=1)
     assert scaled_x[1]-scaled_x[0] < zoomed[1]-zoomed[0]
+    # Y-axis operations require explicitly disabling automatic Y.
+    drag(page, axis_point(page, "y"), dy=-35)
+    assert domain(page) == scaled_x
+    page.get_by_role("button", name="Y自動", exact=True).click()
+    page.wait_for_function("document.querySelector('.chart-svg').dataset.yMode==='manual'")
     # Dragging the value axis up stretches values around the current center.
     drag(page, axis_point(page, "y"), dy=-35)
     manual = domain(page)
@@ -494,6 +501,26 @@ def test_comparison_line_tooltip_keeps_series_values_without_artwork_cards(chart
     page.close()
 
 
+def test_data_marker_at_y_axis_edge_remains_a_plot_target(chart_review_browser):
+    page = chart_review_browser.new_page(viewport={"width": 1100, "height": 900})
+    setup_chart(page, chart='scatter')
+    page.evaluate("""() => {
+      result.points.forEach((p,i)=>p.artwork={id:String(i),title:'作品'+i,image_urls:[],likes:p.y});
+      draw();
+    }""")
+    start = page.locator('[data-point-index="0"]').evaluate("""el => {
+      const svg=el.closest('svg'), circle=el.querySelector('circle');
+      const pt=new DOMPoint(Number(circle.getAttribute('cx'))-0.001,
+          Number(circle.getAttribute('cy'))).matrixTransform(svg.getScreenCTM());
+      return {x:pt.x,y:pt.y};
+    }""")
+    page.mouse.click(**start)
+    assert page.locator('.chart-tooltip').is_visible()
+    assert page.locator('.chart-artwork-title').inner_text() == '作品0'
+    assert page.locator('.chart-svg').get_attribute('data-y-mode') == 'auto'
+    page.close()
+
+
 def test_phone_tap_pins_scrollable_comparison_tooltip_until_outside_tap(chart_review_browser):
     context = chart_review_browser.new_context(
         viewport={"width": 375, "height": 812}, is_mobile=True, has_touch=True
@@ -545,6 +572,8 @@ def test_settings_refresh_and_manual_scale_are_separate(chart_page):
     page = chart_page
     page.evaluate("panel.style.y_min=10;panel.style.y_max=100;draw()")
     assert domain(page)[2:] == [10, 100]
+    page.get_by_role("button", name="Y自動", exact=True).click()
+    page.wait_for_function("document.querySelector('.chart-svg').dataset.yMode==='manual'")
     drag(page, axis_point(page, "y"), dy=-30)
     manual = domain(page)
     page.evaluate("result=structuredClone(result); result.points.push({...result.points.at(-1),x:new Date(Date.parse(result.points.at(-1).x)+3600000).toISOString(),y:1000});draw()")
@@ -620,15 +649,190 @@ def test_large_dataset_keeps_dom_and_requests_bounded(chart_page):
 
 
 @pytest.mark.parametrize("width,height", [(375, 812), (844, 390)])
-def test_manual_y_vertical_touch_pans_without_scrolling(chart_review_browser, width, height):
+@pytest.mark.parametrize("constrained", [False, True])
+def test_touch_regions_own_axis_zoom_plot_pan_and_pinch(chart_review_browser, width, height, constrained):
+    context = chart_review_browser.new_context(
+        viewport={"width": width, "height": height}, is_mobile=True, has_touch=True
+    )
+    page = context.new_page()
+    setup_chart(page)
+    page.evaluate("document.body.style.minHeight='2000px'")
+    if constrained:
+        # Settings previews can give the SVG a different aspect ratio than its
+        # viewBox. Use actual rendered coordinates, including the empty margins.
+        page.add_style_tag(content='.chart-svg { height: 160px; }')
+    cdp = context.new_cdp_session(page)
+
+    def position(area):
+        return page.locator('.chart-svg').evaluate("""(svg, area) => {
+          const p=svg.closest('.chart-container').chartInfo.plot;
+          const x=area==='y'?p.l/2:p.l+p.pw/2;
+          const y=area==='x'?p.t+p.ph+15:p.t+p.ph/2;
+          const pt=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());
+          return {x:pt.x,y:pt.y};
+        }""", area)
+
+    def touch(kind, points):
+        cdp.send('Input.dispatchTouchEvent', {
+            'type': kind, 'touchPoints': [dict(p, id=i) for i, p in enumerate(points)]
+        })
+        page.evaluate('() => new Promise(requestAnimationFrame)')
+
+    def swipe(area, dx, dy):
+        start = position(area)
+        touch('touchStart', [start])
+        for f in [0.2, 0.5, 1]:
+            touch('touchMove', [dict(start, x=start['x']+dx*f, y=start['y']+dy*f)])
+        touch('touchEnd', [])
+
+    original = domain(page)
+    swipe('y', 40, -25)
+    assert domain(page) == original
+    assert page.locator('.chart-svg').get_attribute('data-y-mode') == 'auto'
+    # The finger crosses into the plot, but the X axis keeps ownership.
+    swipe('x', -30, -35)
+    x_zoom = domain(page)
+    assert x_zoom[1] == pytest.approx(original[1])
+    assert x_zoom[1]-x_zoom[0] < original[1]-original[0]
+    # Auto Y survives a pinch and vertical midpoint movement. Its range is
+    # derived from the visible data, rather than scaled or panned by the fingers.
+    start = position('plot')
+    a, b = dict(start, x=start['x']-20), dict(start, x=start['x']+20)
+    touch('touchStart', [a, b])
+    touch('touchMove', [dict(a, x=a['x']-10, y=a['y']+10), dict(b, x=b['x']+10, y=b['y']+10)])
+    touch('touchEnd', [])
+    auto_zoom = domain(page)
+    assert auto_zoom[1]-auto_zoom[0] == pytest.approx((x_zoom[1]-x_zoom[0])*2/3)
+    lo, hi = auto_zoom[0]*0.6, auto_zoom[1]*0.6+10
+    padding = (hi-lo)*0.08
+    assert auto_zoom[2:] == pytest.approx([lo-padding, hi+padding])
+    assert page.get_by_role('button', name='Y自動', exact=True).get_attribute('aria-pressed') == 'true'
+    # Lock Y before testing that Y gestures cannot change X, and vice versa.
+    page.get_by_role('button', name='Y自動', exact=True).tap()
+    before = domain(page)
+    swipe('y', 40, -25)
+    y_zoom = domain(page)
+    assert y_zoom[:2] == before[:2]
+    assert y_zoom[3]-y_zoom[2] < before[3]-before[2]
+    assert sum(y_zoom[2:]) == pytest.approx(sum(before[2:]))
+    # An extra finger on the plot must not steal an axis gesture for a pinch.
+    axis, plot = position('y'), position('plot')
+    before = domain(page)
+    touch('touchStart', [axis])
+    touch('touchStart', [axis, plot])
+    touch('touchMove', [dict(axis, y=axis['y']-15), dict(plot, x=plot['x']+20)])
+    touch('touchEnd', [dict(axis, y=axis['y']-15)])
+    touch('touchMove', [dict(axis, y=axis['y']-25)])
+    touch('touchEnd', [])
+    y_zoom = domain(page)
+    assert y_zoom[:2] == before[:2]
+    assert y_zoom[3]-y_zoom[2] < before[3]-before[2]
+    swipe('x', -20, -35)
+    assert domain(page)[2:] == y_zoom[2:]
+
+    # A plot swipe crosses the X axis without becoming an axis zoom.
+    before = domain(page)
+    swipe('plot', 15, 55)
+    after = domain(page)
+    assert after[0] < before[0]
+    assert after[1]-after[0] == pytest.approx(before[1]-before[0])
+    assert after[2] > before[2]
+    assert after[3]-after[2] == pytest.approx(before[3]-before[2])
+
+    # Pinch scales both axes about the fingers, without page zoom or scroll.
+    start = position('plot')
+    a, b = dict(start, x=start['x']-20), dict(start, x=start['x']+20)
+    before = domain(page)
+    touch('touchStart', [a, b])
+    touch('touchMove', [dict(a, x=a['x']-10), dict(b, x=b['x']+10)])
+    touch('touchEnd', [])
+    after = domain(page)
+    assert after[1]-after[0] == pytest.approx((before[1]-before[0])*2/3)
+    assert after[3]-after[2] == pytest.approx((before[3]-before[2])*2/3)
+    assert sum(after[:2]) == pytest.approx(sum(before[:2]))
+    assert sum(after[2:]) == pytest.approx(sum(before[2:]))
+    assert page.evaluate('scrollY') == 0
+    assert page.evaluate('visualViewport.scale') == pytest.approx(1, abs=0.005)
+
+    # A swipe starting outside the SVG can still scroll the page in pan mode.
+    touch('touchStart', [{'x': 2, 'y': min(height-40, 250)}])
+    touch('touchMove', [{'x': 2, 'y': min(height-40, 250)-80}])
+    touch('touchEnd', [])
+    page.wait_for_function('scrollY > 0')
+    context.close()
+
+
+@pytest.mark.parametrize("width,height", [(375, 812), (844, 390)])
+def test_settings_preview_touch_uses_rendered_axes(review_server, chart_review_browser, width, height):
+    context = chart_review_browser.new_context(
+        viewport={"width": width, "height": height}, is_mobile=True, has_touch=True,
+        reduced_motion='reduce',
+    )
+    page = context.new_page()
+    page.goto(review_server + '/analytics?demo=1#views')
+    page.locator('.chart-svg').first.wait_for()
+    page.locator('[data-settings]').first.click()
+    svg = page.locator('.panel.is-selected .chart-svg')
+    svg.wait_for()
+    page.wait_for_function("document.querySelector('.panel.is-selected .chart-container').chartInfo?.plot")
+    cdp = context.new_cdp_session(page)
+
+    def current():
+        return svg.evaluate("el => ['xMin','xMax','yMin','yMax'].map(k=>Number(el.dataset[k]))")
+
+    def swipe(area, dx, dy):
+        start = svg.evaluate("""(el, area) => {
+          const p=el.closest('.chart-container').chartInfo.plot;
+          const pt=new DOMPoint(area==='y'?p.l/2:p.l+p.pw/2,
+              area==='x'?p.t+p.ph+10:p.t+p.ph/2).matrixTransform(el.getScreenCTM());
+          return {x:pt.x,y:pt.y,id:0};
+        }""", area)
+        assert page.evaluate("p=>!!document.elementFromPoint(p.x,p.y)?.closest('.chart-svg')", start)
+        cdp.send('Input.dispatchTouchEvent', {'type':'touchStart','touchPoints':[start]})
+        for f in [0.3, 0.6, 1]:
+            cdp.send('Input.dispatchTouchEvent', {
+                'type':'touchMove', 'touchPoints':[dict(start,x=start['x']+dx*f,y=start['y']+dy*f)]
+            })
+            page.evaluate('() => new Promise(requestAnimationFrame)')
+        cdp.send('Input.dispatchTouchEvent', {'type':'touchEnd','touchPoints':[]})
+        page.evaluate('() => new Promise(requestAnimationFrame)')
+
+    before = current()
+    swipe('y', 0, -12)
+    assert current() == before
+    assert svg.get_attribute('data-y-mode') == 'auto'
+    # The compact landscape preview hides the toolbar. Toggle in the normal
+    # chart view, then reopen the editor with the manual state preserved.
+    page.locator('#close-settings').tap()
+    page.locator('[data-chart-action="auto-y"]').first.tap()
+    page.locator('[data-settings]').first.tap()
+    page.wait_for_function("document.querySelector('.panel.is-selected .chart-svg').dataset.yMode==='manual'")
+    before = current()
+    swipe('y', 0, -12)
+    after = current()
+    assert after[:2] == before[:2]
+    assert after[3]-after[2] < before[3]-before[2]
+    swipe('x', -20, 0)
+    zoomed = current()
+    assert zoomed[1]-zoomed[0] < after[1]-after[0]
+    assert zoomed[2:] == after[2:]
+    swipe('plot', 10, 12)
+    moved = current()
+    assert moved[1]-moved[0] == pytest.approx(zoomed[1]-zoomed[0])
+    assert moved[3]-moved[2] == pytest.approx(zoomed[3]-zoomed[2])
+    assert moved[0] < zoomed[0] and moved[2] > zoomed[2]
+    context.close()
+
+
+@pytest.mark.parametrize("width,height", [(375, 812), (844, 390)])
+def test_plot_vertical_touch_requires_manual_y_without_scrolling(chart_review_browser, width, height):
     context = chart_review_browser.new_context(
         viewport={"width": width, "height": height}, is_mobile=True, has_touch=True
     )
     page = context.new_page()
     setup_chart(page, dates=True)
     page.evaluate("document.body.style.minHeight='2000px'")
-    page.get_by_role("button", name="Y自動", exact=True).tap()
-    page.wait_for_function("document.querySelector('.chart-svg').dataset.yMode==='manual'")
+    assert page.locator('.chart-svg').get_attribute('data-y-mode') == 'auto'
     cdp = context.new_cdp_session(page)
 
     def swipe(start, dy):
@@ -641,6 +845,12 @@ def test_manual_y_vertical_touch_pans_without_scrolling(chart_review_browser, wi
         cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
         page.evaluate("() => new Promise(requestAnimationFrame)")
 
+    before = domain(page)
+    swipe(plot_point(page), -60)
+    assert domain(page) == before
+    assert page.locator('.chart-svg').get_attribute('data-y-mode') == 'auto'
+    page.get_by_role("button", name="Y自動", exact=True).tap()
+    page.wait_for_function("document.querySelector('.chart-svg').dataset.yMode==='manual'")
     for dy in [-60, 60]:
         before = domain(page)
         swipe(plot_point(page), dy)
@@ -649,8 +859,17 @@ def test_manual_y_vertical_touch_pans_without_scrolling(chart_review_browser, wi
         assert (after[2] - before[2]) * dy > 0
         assert after[3] - after[2] == pytest.approx(before[3] - before[2])
         assert page.evaluate("scrollY") == 0
+        assert page.locator('.chart-svg').get_attribute('data-y-mode') == 'manual'
 
-    # Inspection still permits scrolling even while Y remains manual.
+    # Enabling auto Y again also disables vertical pan again.
+    page.get_by_role("button", name="Y自動", exact=True).tap()
+    page.wait_for_function("document.querySelector('.chart-svg').dataset.yMode==='auto'")
+    before = domain(page)
+    swipe(plot_point(page), 60)
+    assert domain(page) == before
+    assert page.locator('.chart-svg').get_attribute('data-y-mode') == 'auto'
+
+    # Inspection still permits scrolling.
     page.get_by_role("button", name="値を見る", exact=True).tap()
     before = domain(page)
     swipe(plot_point(page, y=0.85), -90)
@@ -675,7 +894,8 @@ def test_touch_keeps_vertical_page_scroll_and_tooltips_in_bounds(width, height):
         def touch(kind, points):
             cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": [dict(p, id=i) for i, p in enumerate(points)]})
 
-        # Native page scrolling must remain available when a swipe starts on the plot.
+        # Inspect mode keeps native page scrolling available on the plot.
+        page.get_by_role("button", name="値を見る", exact=True).tap()
         before = domain(page)
         pos = plot_point(page, 0.5, 0.85)
         touch("touchStart", [pos])

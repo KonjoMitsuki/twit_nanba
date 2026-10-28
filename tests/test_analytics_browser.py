@@ -235,6 +235,8 @@ def test_personal_designer_on_desktop_and_phone(tmp_path):
             chart.locator('[data-chart-action="in"]').click()
             page.wait_for_function("Array.from(document.querySelectorAll('.chart-container')).some(h=>h.chartViewport)")
             svg = chart.locator(".chart-svg")
+            chart.locator('[data-chart-action="auto-y"]').click()
+            page.wait_for_function("Array.from(document.querySelectorAll('.chart-svg')).some(s=>s.dataset.yMode==='manual')")
             axis = svg.evaluate("""el=>{const b=el.getBoundingClientRect(),v=el.viewBox.baseVal;return {x:b.x+30*b.width/v.width,y:b.y+100*b.height/v.height}}""")
             page.mouse.move(**axis)
             page.mouse.down()

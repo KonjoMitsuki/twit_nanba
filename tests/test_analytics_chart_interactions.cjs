@@ -42,6 +42,10 @@ assert.ok(
 );
 const manual = scaleY(base, base, 0.5);
 assert.deepEqual(manual, { xmin: 0, xmax: 100, ymin: -25, ymax: 25 });
+// Pinching away from the center keeps the touched Y value anchored.
+const anchoredY = scaleY(base, base, 0.5, 0.8);
+assert.deepEqual(anchoredY, { xmin: 0, xmax: 100, ymin: -10, ymax: 40 });
+assert.equal(anchoredY.ymin + (anchoredY.ymax - anchoredY.ymin) * 0.8, 30);
 assert.deepEqual(zoom(manual, base, 0.5), { ...manual, xmin: 25, xmax: 75 });
 assert.deepEqual(pan({ ...manual, xmin: 20, xmax: 80 }, base, -100), {
   ...manual,

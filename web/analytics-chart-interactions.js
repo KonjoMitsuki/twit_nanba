@@ -79,15 +79,19 @@
     const shift = clamp(dy, -span * 10000, span * 10000);
     return { ...view, ymin: view.ymin + shift, ymax: view.ymax + shift };
   }
-  function scaleY(view, base, factor) {
-    const center = (view.ymin + view.ymax) / 2;
+  function scaleY(view, base, factor, anchor = 0.5) {
+    const center = view.ymin + (view.ymax - view.ymin) * anchor;
     const reference = base.ymax - base.ymin;
     const span = clamp(
       (view.ymax - view.ymin) * factor,
       Math.max(reference / 10000, Math.abs(center) * Number.EPSILON * 16, 1e-9),
       reference * 10000,
     );
-    return { ...view, ymin: center - span / 2, ymax: center + span / 2 };
+    return {
+      ...view,
+      ymin: center - span * anchor,
+      ymax: center + span * (1 - anchor),
+    };
   }
   function bind(host, info) {
     host.chartInfo = info;
@@ -109,16 +113,26 @@
       tooltip.classList.add("is-pinned");
     };
     const local = (x, y) => {
-      const svg = host.querySelector(".chart-svg"),
-        b = svg.getBoundingClientRect(),
-        p = host.chartInfo.plot;
-      return {
-        x: ((x - b.left) * p.W) / b.width,
-        y: ((y - b.top) * p.H) / b.height,
-      };
+      const svg = host.querySelector(".chart-svg");
+      // CSS can constrain the SVG independently of its viewBox (settings preview).
+      // Account for preserveAspectRatio letterboxing as well as CSS transforms.
+      return new DOMPoint(x, y).matrixTransform(svg.getScreenCTM().inverse());
     };
-    const region = (pos) => {
+    const region = (pos, target) => {
       const p = host.chartInfo.plot;
+      if (pos.x < 0 || pos.x > p.W || pos.y < 0 || pos.y > p.H) return null;
+      // A visible data marker can overlap the axis by a few pixels. Its hit
+      // target belongs to the plot, including subpixel rounding at the edge.
+      // Limit this to the plot's 2px clip margin: mobile hit-target adjustment
+      // can otherwise select a nearby marker while the finger is on the axis.
+      if (
+        target?.closest("[data-point-index]") &&
+        pos.x >= p.l - 2 &&
+        pos.x <= p.l + p.pw + 2 &&
+        pos.y >= p.t - 2 &&
+        pos.y <= p.t + p.ph + 2
+      )
+        return "plot";
       if (pos.y >= p.t && pos.y <= p.t + p.ph && pos.x < p.l) return "y";
       if (pos.x >= p.l && pos.x <= p.l + p.pw) {
         if (pos.y >= p.t + p.ph) return "x";
@@ -127,8 +141,6 @@
       return null;
     };
     const current = () => host.chartViewport || host.chartInfo.view;
-    const touchPansY = () =>
-      host.chartYMode === "manual" && host.chartTouchMode !== "inspect";
     const draw = () => {
       if (frame != null) return;
       frame = requestAnimationFrame(() => {
@@ -160,14 +172,20 @@
         direction: null,
       };
     };
-    const down = (id, pos, touch) => {
-      const area = region(pos);
+    const down = (id, pos, touch, target) => {
+      const area = region(pos, target);
       if (!area) return false;
+      // A second finger may start a pinch only inside an existing plot gesture.
+      // Axis gestures keep their original owner until the initiating finger lifts.
+      if (
+        pointers.size &&
+        (pointers.size >= 2 || gesture.area !== "plot" || area !== "plot")
+      )
+        return false;
       pointers.set(id, pos);
       if (pointers.size > 1) touchedMultiple = true;
       startGesture(pointers.size > 1 ? "plot" : area, touch);
       hover = null;
-      if (area === "y") host.chartYMode = "manual";
       if (pointers.size > 1 || area !== "plot") host.chartInfo.hide();
       else host.chartInfo.inspect(pos);
       return true;
@@ -181,7 +199,8 @@
       if (!g) return false;
       let next;
       if (ps.length > 1 && g.distance > 0) {
-        const mid = (ps[0].x + ps[1].x) / 2;
+        const mid = (ps[0].x + ps[1].x) / 2,
+          midY = (ps[0].y + ps[1].y) / 2;
         const distance = Math.hypot(ps[1].x - ps[0].x, ps[1].y - ps[0].y);
         if (distance < 1) return true;
         next = zoom(
@@ -195,6 +214,18 @@
           i.base,
           (-(mid - g.midpoint.x) / p.pw) * (next.xmax - next.xmin),
         );
+        if (host.chartYMode === "manual") {
+          next = scaleY(
+            next,
+            i.base,
+            g.distance / distance,
+            clamp(1 - (g.midpoint.y - p.t) / p.ph, 0, 1),
+          );
+          next = panY(
+            next,
+            ((midY - g.midpoint.y) / p.ph) * (next.ymax - next.ymin),
+          );
+        }
       } else {
         const dx = pos.x - g.start.x,
           dy = pos.y - g.start.y;
@@ -202,7 +233,7 @@
         if (g.touch && g.area === "plot") {
           g.direction ||=
             Math.abs(dy) > Math.abs(dx) ? "vertical" : "horizontal";
-          if (g.direction === "vertical" && !touchPansY()) {
+          if (g.direction === "vertical" && host.chartTouchMode === "inspect") {
             i.hide();
             return false;
           }
@@ -212,7 +243,7 @@
           }
         }
         if (g.area === "y") {
-          host.chartYMode = "manual";
+          if (host.chartYMode !== "manual") return false;
           next = scaleY(
             g.view,
             i.base,
@@ -242,6 +273,7 @@
       return true;
     };
     const end = (id) => {
+      if (!pointers.has(id)) return;
       pointers.delete(id);
       if (pointers.size) startGesture(gesture?.area || "plot", gesture?.touch);
       else {
@@ -269,6 +301,7 @@
           event.pointerId,
           local(event.clientX, event.clientY),
           event.pointerType === "touch",
+          event.target,
         )
       ) {
         if (event.pointerType !== "touch") event.preventDefault();
@@ -286,9 +319,11 @@
       if (pointers.has(event.pointerId)) move(event.pointerId, pos);
       else if (event.pointerType !== "touch") {
         if (pinnedHost === host) return;
-        const area = region(pos);
+        const area = region(pos, event.target);
         host.querySelector(".chart-svg").style.cursor =
-          area === "y" ? "ns-resize" : area === "x" ? "ew-resize" : "grab";
+          area === "y"
+            ? host.chartYMode === "manual" ? "ns-resize" : "default"
+            : area === "x" ? "ew-resize" : "grab";
         if (area === "plot") {
           hover = pos;
           i.inspect(pos);
@@ -331,8 +366,8 @@
       hover = null;
       if (!pointers.size && pinnedHost !== host) host.chartInfo.hide();
     });
-    // Manual Y in pan mode owns both directions; otherwise vertical swipes
-    // remain available for page scrolling. Pointer events own gesture state.
+    // Pan mode owns both directions. Inspect mode still permits vertical page
+    // scrolling; axes and a plot pinch always remain chart operations.
     host.addEventListener(
       "touchstart",
       (event) => {
@@ -349,7 +384,7 @@
           event.cancelable &&
           (pointers.size > 1 ||
             gesture.area !== "plot" ||
-            touchPansY() ||
+            host.chartTouchMode !== "inspect" ||
             gesture.direction === "horizontal")
         )
           event.preventDefault();
@@ -362,7 +397,7 @@
         if (!host.chartInfo.plot || !event.target.closest(".chart-svg")) return;
         const pos = local(event.clientX, event.clientY),
           p = host.chartInfo.plot;
-        if (region(pos) !== "plot") return;
+        if (region(pos, event.target) !== "plot") return;
         event.preventDefault();
         hover = pos;
         const units =
@@ -389,7 +424,7 @@
     };
     host.addEventListener("dblclick", (event) => {
       if (!event.target.closest(".chart-svg") || !host.chartInfo.plot) return;
-      const area = region(local(event.clientX, event.clientY));
+      const area = region(local(event.clientX, event.clientY), event.target);
       if (area === "y") reset(false, true);
       else if (area === "plot" || area === "x") reset();
     });
