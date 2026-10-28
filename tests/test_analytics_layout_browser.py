@@ -309,6 +309,15 @@ def test_apple_dashboard_calendar_and_detail(review_server, review_browser, widt
         expect(page.locator(".metric-likes strong")).to_have_text("290")
         expect(page.locator(".metric-reposts strong")).to_have_text("9")
         expect(page.locator(".metric-followers strong")).to_have_text("+10")
+        overview_panels = [
+            ("月間サマリー", "#overview-summary"),
+            ("いいね推移", "#overview-likes"),
+            ("フォロワー推移", "#overview-followers"),
+            ("投稿カレンダー", "#overview-calendar"),
+            ("投稿一覧", "#overview-posts"),
+        ]
+        for _, selector in overview_panels:
+            expect(page.locator(selector)).to_be_visible()
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         assert page.locator(".brand-mark img").evaluate("img => img.complete && img.naturalWidth === 34")
         if width <= 760:
@@ -319,16 +328,26 @@ def test_apple_dashboard_calendar_and_detail(review_server, review_browser, widt
             page.keyboard.press("Escape")
             expect(page.locator(".sidebar")).to_be_hidden()
         page.locator("#overview-settings").click()
-        page.get_by_role("switch", name="いいね推移", exact=True).uncheck()
+        for label, _ in overview_panels:
+            page.get_by_role("switch", name=label, exact=True).uncheck()
         page.locator("#overview-preferences button[type=submit]").click()
-        expect(page.locator("#overview-likes")).to_be_hidden()
+        for _, selector in overview_panels:
+            expect(page.locator(selector)).to_be_hidden()
         page.reload()
-        expect(page.locator("#overview-likes")).to_be_hidden()
+        for _, selector in overview_panels:
+            expect(page.locator(selector)).to_be_hidden()
         page.locator("#overview-settings").click()
-        page.get_by_role("switch", name="いいね推移", exact=True).check()
+        for label, _ in overview_panels:
+            page.get_by_role("switch", name=label, exact=True).check()
         page.locator("#overview-lock").click()
         expect(page.get_by_role("switch", name="いいね推移", exact=True)).to_be_disabled()
         page.locator("#overview-preferences button[type=submit]").click()
+        page.reload()
+        for _, selector in overview_panels:
+            expect(page.locator(selector)).to_be_visible()
+        expect(page.locator("#overview-followers-chart .daily-bars")).to_be_visible()
+        expect(page.locator("#overview-calendar-grid .compact-day")).to_have_count(31)
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         page.locator("#overview-month").fill("2026-09")
         expect(page.locator(".metric-likes strong")).to_have_text("100")
         page.locator("#overview-month").fill("2026-10")
@@ -338,6 +357,12 @@ def test_apple_dashboard_calendar_and_detail(review_server, review_browser, widt
             output = Path(output_dir)
             output.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(output / f"apple-dashboard-{width}.png"), full_page=True)
+
+        # The dedicated follower page still shows only its own chart.
+        page.goto(review_server + "/analytics?month=2026-10#followers")
+        expect(page.locator("#overview-followers")).to_be_visible()
+        for selector in ["#overview-likes", "#overview-calendar", "#overview-posts"]:
+            expect(page.locator(selector)).to_be_hidden()
 
         page.goto(review_server + "/?month=2026-10")
         expect(page.locator("#month-title")).to_have_text("2026年10月")

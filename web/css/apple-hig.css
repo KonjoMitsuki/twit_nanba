@@ -272,7 +272,6 @@
   .daily-bars { gap: 6px; height: 150px; padding: 20px 6px 0; }
   .daily-bar-fill { border-radius: 4px; }
   .overview-chart-axis { padding-inline: 6px; }
-  [data-section="dashboard"] .followers-card, [data-section="dashboard"] .calendar-card { display: none; }
   .highlights-card { min-height: 199px; }
   .highlight-post { gap: 12px; min-height: 62px; }
   .highlight-image { width: 44px; height: 44px; }
