@@ -127,6 +127,8 @@
       return null;
     };
     const current = () => host.chartViewport || host.chartInfo.view;
+    const touchPansY = () =>
+      host.chartYMode === "manual" && host.chartTouchMode !== "inspect";
     const draw = () => {
       if (frame != null) return;
       frame = requestAnimationFrame(() => {
@@ -200,7 +202,7 @@
         if (g.touch && g.area === "plot") {
           g.direction ||=
             Math.abs(dy) > Math.abs(dx) ? "vertical" : "horizontal";
-          if (g.direction === "vertical") {
+          if (g.direction === "vertical" && !touchPansY()) {
             i.hide();
             return false;
           }
@@ -329,8 +331,8 @@
       hover = null;
       if (!pointers.size && pinnedHost !== host) host.chartInfo.hide();
     });
-    // Pointer events own gesture state. Cancel native touch movement only after
-    // horizontal intent (or two fingers), so vertical swipes can scroll the page.
+    // Manual Y in pan mode owns both directions; otherwise vertical swipes
+    // remain available for page scrolling. Pointer events own gesture state.
     host.addEventListener(
       "touchstart",
       (event) => {
@@ -347,6 +349,7 @@
           event.cancelable &&
           (pointers.size > 1 ||
             gesture.area !== "plot" ||
+            touchPansY() ||
             gesture.direction === "horizontal")
         )
           event.preventDefault();

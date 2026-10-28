@@ -620,6 +620,46 @@ def test_large_dataset_keeps_dom_and_requests_bounded(chart_page):
 
 
 @pytest.mark.parametrize("width,height", [(375, 812), (844, 390)])
+def test_manual_y_vertical_touch_pans_without_scrolling(chart_review_browser, width, height):
+    context = chart_review_browser.new_context(
+        viewport={"width": width, "height": height}, is_mobile=True, has_touch=True
+    )
+    page = context.new_page()
+    setup_chart(page, dates=True)
+    page.evaluate("document.body.style.minHeight='2000px'")
+    page.get_by_role("button", name="Y自動", exact=True).tap()
+    page.wait_for_function("document.querySelector('.chart-svg').dataset.yMode==='manual'")
+    cdp = context.new_cdp_session(page)
+
+    def swipe(start, dy):
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [dict(start, id=0)]})
+        for fraction in [0.2, 0.4, 0.7, 1]:
+            cdp.send("Input.dispatchTouchEvent", {
+                "type": "touchMove", "touchPoints": [dict(start, id=0, y=start["y"] + dy * fraction)]
+            })
+            page.evaluate("() => new Promise(requestAnimationFrame)")
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+        page.evaluate("() => new Promise(requestAnimationFrame)")
+
+    for dy in [-60, 60]:
+        before = domain(page)
+        swipe(plot_point(page), dy)
+        after = domain(page)
+        assert after[:2] == before[:2]
+        assert (after[2] - before[2]) * dy > 0
+        assert after[3] - after[2] == pytest.approx(before[3] - before[2])
+        assert page.evaluate("scrollY") == 0
+
+    # Inspection still permits scrolling even while Y remains manual.
+    page.get_by_role("button", name="値を見る", exact=True).tap()
+    before = domain(page)
+    swipe(plot_point(page, y=0.85), -90)
+    page.wait_for_function("scrollY > 0")
+    assert domain(page) == before
+    context.close()
+
+
+@pytest.mark.parametrize("width,height", [(375, 812), (844, 390)])
 def test_touch_keeps_vertical_page_scroll_and_tooltips_in_bounds(width, height):
     from playwright.sync_api import sync_playwright
 
