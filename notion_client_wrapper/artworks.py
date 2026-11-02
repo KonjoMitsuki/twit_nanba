@@ -2,8 +2,10 @@
 notion_client_wrapper/artworks.py — 作品マスターDB (Art Works) CRUD
 """
 
+import re
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 import config
 from notion_client_wrapper import get_client
@@ -68,6 +70,32 @@ def find_by_tweet_url(url: str) -> dict[str, Any] | None:
 
     results = response.get("results", [])
     return results[0] if results else None
+
+
+def find_by_tweet_id(tweet_id: str) -> dict[str, Any] | None:
+    """Find the same post across X/Twitter hosts and shared URL variants."""
+    client = get_client()
+    body: dict[str, Any] = {
+        "filter": {
+            "property": config.AW_PROP_URL,
+            "url": {"contains": f"/status/{tweet_id}"},
+        },
+        "page_size": 100,
+    }
+    while True:
+        response = client.request(
+            path=f"data_sources/{config.ARTWORKS_DB_ID}/query",
+            method="POST",
+            body=body,
+        )
+        for page in response.get("results", []):
+            url = page["properties"][config.AW_PROP_URL].get("url") or ""
+            match = re.search(r"/status/([0-9]+)(?:/|$)", urlsplit(url).path)
+            if match and match.group(1) == tweet_id:
+                return page
+        if not response.get("has_more"):
+            return None
+        body["start_cursor"] = response["next_cursor"]
 
 
 def create_artwork(

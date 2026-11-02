@@ -6,13 +6,14 @@ import time
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import config
 from scraper.auto_detect import check_new_art_post
 from scraper.browser import create_browser_context, random_wait
+from scraper.url_registration import RegistrationError, normalize_post_url, register_post_url
 from processing.character_mapper import character_for_tags, characters_for_tags
 from storage import app_db
 from api import profiles, analytics
@@ -23,6 +24,7 @@ logger = logging.getLogger("api")
 LOCK_PATH = Path(__file__).resolve().parent.parent / ".process.lock"
 _manual_detect_running = False
 _last_manual_trigger_ts = 0.0
+_manual_detect_result: dict | None = None
 MANUAL_TRIGGER_COOLDOWN_SEC = 3 * 60
 
 
@@ -30,6 +32,16 @@ class ArtworkCharacterUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     character: str | None = Field(default=None, max_length=100)
     characters: list[str] | None = Field(default=None, max_length=30)
+
+
+class PostURLRegistration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str = Field(min_length=1, max_length=2048)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        return normalize_post_url(value)
 
 
 def _try_acquire_process_lock():
@@ -43,15 +55,26 @@ def _try_acquire_process_lock():
     return lock_file
 
 
-async def _run_manual_detect(lock_file) -> None:
-    global _manual_detect_running
+async def _run_manual_detect(lock_file, url: str | None = None) -> None:
+    global _manual_detect_running, _manual_detect_result
     try:
         async with create_browser_context(headless=True) as (_context, page):
-            detected = await check_new_art_post(page, config.X_SCREEN_NAME)
+            if url:
+                _manual_detect_result = await register_post_url(page, url, config.X_SCREEN_NAME)
+            else:
+                detected = await check_new_art_post(page, config.X_SCREEN_NAME)
+                _manual_detect_result = {"status": "completed", "detected": detected.detected}
             await random_wait()
-            logger.info("手動巡回完了: 新規検知=%s", detected)
-    except Exception as error:
-        logger.error("手動巡回エラー: %s", error)
+            logger.info("手動巡回完了: %s", _manual_detect_result)
+    except RegistrationError as error:
+        _manual_detect_result = {"status": "failed", "message": str(error)}
+        logger.exception("URL指定の登録に失敗")
+    except Exception:
+        _manual_detect_result = {
+            "status": "failed",
+            "message": "処理に失敗しました。時間をおいて再実行してください。",
+        }
+        logger.exception("手動巡回エラー")
     finally:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         lock_file.close()
@@ -70,7 +93,18 @@ def health() -> dict[str, str]:
 
 @app.post("/api/detect/trigger")
 def trigger_detect(background_tasks: BackgroundTasks):
-    global _manual_detect_running, _last_manual_trigger_ts
+    return _start_manual_detect(background_tasks)
+
+
+@app.post("/api/detect/url", status_code=202)
+def register_url(payload: PostURLRegistration, background_tasks: BackgroundTasks):
+    if not config.X_SCREEN_NAME.strip().lstrip("@"):
+        raise HTTPException(status_code=503, detail="追跡対象のアカウントが設定されていません。")
+    return _start_manual_detect(background_tasks, payload.url)
+
+
+def _start_manual_detect(background_tasks: BackgroundTasks, url: str | None = None):
+    global _manual_detect_running, _last_manual_trigger_ts, _manual_detect_result
     now = time.time()
 
     if _manual_detect_running:
@@ -92,13 +126,14 @@ def trigger_detect(background_tasks: BackgroundTasks):
 
     _manual_detect_running = True
     _last_manual_trigger_ts = now
-    background_tasks.add_task(_run_manual_detect, lock_file)
+    _manual_detect_result = None
+    background_tasks.add_task(_run_manual_detect, lock_file, url)
     return {"status": "started"}
 
 
 @app.get("/api/detect/status")
 def detect_status():
-    return {"running": _manual_detect_running}
+    return {"running": _manual_detect_running, "result": _manual_detect_result}
 
 
 @app.get("/api/calendar")

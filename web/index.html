@@ -26,7 +26,8 @@
   </aside>
   <main class="shell">
     <header class="topbar"><a class="brand" href="/">X Art <em>Analytics</em></a><div class="topbar-meta"><a id="tracked-profile-link" class="x-link profile-link" href="#" target="_blank" rel="noreferrer" hidden>𝕏プロフィール ↗</a><span class="eyebrow">CREATIVE LOG / 01</span></div></header>
-    <section class="hero"><div><p class="kicker">MONTHLY ARCHIVE</p><h1 id="month-title">読み込み中</h1><p class="subline">作品の投稿と、その後の反応をひとつの景色で。</p></div><div class="month-controls"><button id="prev-month" class="icon-button" aria-label="前の月">←</button><button id="today" class="today-button">今日</button><button id="next-month" class="icon-button" aria-label="次の月">→</button><button id="patrol-now" class="today-button">🔍 新着チェック</button></div></section>
+    <section class="hero"><div><p class="kicker">MONTHLY ARCHIVE</p><h1 id="month-title">読み込み中</h1><p class="subline">作品の投稿と、その後の反応をひとつの景色で。</p></div><div class="month-controls"><button id="prev-month" class="icon-button" aria-label="前の月">←</button><button id="today" class="today-button">今日</button><button id="next-month" class="icon-button" aria-label="次の月">→</button><button id="patrol-now" class="today-button">🔍 新着チェック</button><button id="add-post-url" class="today-button" aria-haspopup="dialog">URLから追加</button></div></section>
+    <p id="detect-feedback" class="detect-feedback" role="status" aria-live="polite"></p>
     <section class="summary" id="summary" aria-label="月間サマリー"></section>
     <section class="calendar-wrap"><div class="weekdays"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div><div id="calendar" class="calendar" aria-live="polite"></div></section>
   </main>
@@ -37,6 +38,16 @@
     <a href="/analytics#followers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 16 5-5 4 3 8-9m-6 0h6v6"/></svg><span>フォロワー</span></a>
     <a href="/analytics#views"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" transform="rotate(45 12 12)"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg><span>保存ビュー</span></a>
   </nav>
+  <dialog id="post-url-dialog" class="post-url-dialog" aria-labelledby="post-url-title" aria-describedby="post-url-help">
+    <div class="post-url-heading"><h2 id="post-url-title">URLから作品を追加</h2><button id="close-post-url" class="icon-button" type="button" aria-label="閉じる">×</button></div>
+    <p id="post-url-help">追跡中アカウントの画像付き投稿を追加します。数値の計測は定期実行で行います。</p>
+    <form id="post-url-form">
+      <label for="post-url">Xの投稿URL</label>
+      <input id="post-url" name="url" type="url" required maxlength="2048" placeholder="https://x.com/ユーザー名/status/投稿ID" autocomplete="off" spellcheck="false" aria-describedby="post-url-help post-url-feedback">
+      <p id="post-url-feedback" class="detect-feedback" role="status" aria-live="polite"></p>
+      <button id="submit-post-url" class="today-button" type="submit">追加する</button>
+    </form>
+  </dialog>
   <script src="/app.js"></script>
 </body>
 </html>
