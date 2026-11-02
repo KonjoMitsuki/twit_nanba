@@ -427,26 +427,31 @@ async def check_new_art_post(
         config.PROFILE_LOAD_TIMEOUT_SEC,
         config.PROFILE_LOAD_RETRY_TIMEOUT_SEC,
     )
+    followers = None
     for attempt, timeout_sec in enumerate(profile_timeouts, start=1):
         try:
             await page.goto(profile_url, wait_until="domcontentloaded")
             await page.wait_for_selector("main", timeout=timeout_sec * 1000)
+            followers = await fetch_profile_followers(page, _screen_name)
+            # main は投稿一覧より先に表示される。投稿ゼロと読み込み途中を区別する。
+            await page.wait_for_selector(
+                "main article[data-testid='tweet'], main [data-testid='emptyState']",
+                timeout=timeout_sec * 1000,
+            )
             break
         except Exception as e:
             if attempt < len(profile_timeouts):
                 logger.warning(
-                    "プロフィールページの読み込みに失敗 (%d/%d、%.0f秒): %s。再試行します",
+                    "プロフィールまたは投稿一覧の読み込みに失敗 (%d/%d、%.0f秒): %s。再試行します",
                     attempt,
                     len(profile_timeouts),
                     timeout_sec,
                     e,
                 )
                 continue
-            logger.error("プロフィールページの読み込みに失敗: %s", e)
+            logger.error("プロフィールまたは投稿一覧の読み込みに失敗: %s", e)
             save_last_check_time()  # 失敗してもタイマーリセット（連続リトライ防止）
-            return ProfileCheckResult(False, None)
-
-    followers = await fetch_profile_followers(page, _screen_name)
+            return ProfileCheckResult(False, followers)
 
     # 最新ツイートを上から走査（最大5件）
     tweets = page.locator("article[data-testid='tweet']")
