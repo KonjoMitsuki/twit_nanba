@@ -9,7 +9,9 @@ TweetDetail / TweetResultByRestId の GraphQL レスポンスを傍受し、
 import asyncio
 import json
 import logging
+import re
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.async_api import Page, Response
 
@@ -18,32 +20,20 @@ import config
 logger = logging.getLogger(__name__)
 
 
-def _extract_tweet_data(data: dict[str, Any]) -> dict[str, Any] | None:
-    """GraphQL レスポンスの JSON から tweet result オブジェクトを再帰的に探索する。
+class PostUnavailableError(RuntimeError):
+    """X が対象投稿の不存在・閲覧不能を返した。"""
 
-    TweetDetail レスポンスは以下のような構造:
-    data -> threaded_conversation_with_injections_v2 -> instructions
-        -> entries -> content -> itemContent -> tweet_results -> result
 
-    TweetResultByRestId レスポンスは:
-    data -> tweetResult -> result
+def _tweet_result_containers(
+    data: dict[str, Any], tweet_id: str | None,
+) -> list[dict[str, Any] | None]:
+    """対象投稿の結果だけを返し、スレッド内の返信や引用は除外する。"""
+    payload = data.get("data") or {}
+    containers: list[dict[str, Any] | None] = []
+    if "tweetResult" in payload:
+        containers.append(payload["tweetResult"])
 
-    Args:
-        data: GraphQL レスポンスの JSON ルートオブジェクト。
-
-    Returns:
-        dict | None: tweet result オブジェクト（legacy, views を含む）。
-    """
-    # パターン1: TweetResultByRestId
-    tweet_result = data.get("data", {}).get("tweetResult", {}).get("result")
-    if tweet_result and "legacy" in tweet_result:
-        return tweet_result
-
-    # パターン2: TweetDetail (threaded_conversation)
-    conversation = (
-        data.get("data", {})
-        .get("threaded_conversation_with_injections_v2", {})
-    )
+    conversation = payload.get("threaded_conversation_with_injections_v2", {})
     instructions = conversation.get("instructions", [])
 
     for instruction in instructions:
@@ -52,24 +42,60 @@ def _extract_tweet_data(data: dict[str, Any]) -> dict[str, Any] | None:
 
         entries = instruction.get("entries", [])
         for entry in entries:
-            # フォーカルツイートのエントリを探す
             entry_id = entry.get("entryId", "")
             if not entry_id.startswith("tweet-"):
                 continue
+            if tweet_id is not None and entry_id != f"tweet-{tweet_id}":
+                continue
 
-            # itemContent -> tweet_results -> result
             content = entry.get("content", {})
             item_content = content.get("itemContent", {})
-            result = (
-                item_content
-                .get("tweet_results", {})
-                .get("result", {})
-            )
+            if "tweet_results" in item_content:
+                containers.append(item_content["tweet_results"])
 
-            if result and "legacy" in result:
-                return result
+    return containers
+
+
+def _extract_tweet_data(
+    data: dict[str, Any], tweet_id: str | None = None,
+) -> dict[str, Any] | None:
+    """TweetDetail / TweetResultByRestId から対象投稿の数値を探す。"""
+    for container in _tweet_result_containers(data, tweet_id):
+        if not isinstance(container, dict):
+            continue
+        result = container.get("result")
+        if (
+            isinstance(result, dict)
+            and result.get("__typename") == "TweetWithVisibilityResults"
+        ):
+            result = result.get("tweet")
+        if (
+            not isinstance(result, dict)
+            or not isinstance(result.get("legacy"), dict)
+        ):
+            continue
+        result_id = result.get("rest_id") or result["legacy"].get("id_str")
+        if tweet_id is None or result_id == tweet_id:
+            return result
 
     return None
+
+
+def _post_is_unavailable(data: dict[str, Any], tweet_id: str) -> bool:
+    """空の投稿結果と明示的な閲覧不能応答を、未知の形式と区別する。"""
+    for container in _tweet_result_containers(data, tweet_id):
+        if container is None or container == {}:
+            return True
+        if not isinstance(container, dict) or "result" not in container:
+            continue
+        result = container["result"]
+        if result is None or result == {}:
+            return True
+        if isinstance(result, dict) and result.get("__typename") in (
+            "TweetTombstone", "TweetUnavailable",
+        ):
+            return True
+    return False
 
 
 def _parse_metrics(tweet_result: dict[str, Any]) -> dict[str, Any]:
@@ -235,12 +261,18 @@ async def fetch_metrics(page: Page, tweet_url: str) -> dict[str, Any]:
 
     Raises:
         TimeoutError: GraphQL レスポンスが制限時間内に取得できなかった場合。
+        PostUnavailableError: X が対象投稿の不存在・閲覧不能を返した場合。
     """
+    tweet_id_match = re.search(r"/status/(\d+)", urlsplit(tweet_url).path)
+    if tweet_id_match is None:
+        raise ValueError(f"投稿IDを取得できません: {tweet_url}")
+    tweet_id = tweet_id_match.group(1)
     metrics_future: asyncio.Future[dict[str, Any]] | None = None
 
     async def _handle_response(response: Response) -> None:
         """GraphQL レスポンスのハンドラ。"""
-        if metrics_future is None or metrics_future.done():
+        future = metrics_future
+        if future is None or future.done():
             return
 
         url = response.url
@@ -255,12 +287,18 @@ async def fetch_metrics(page: Page, tweet_url: str) -> dict[str, Any]:
             return
 
         try:
+            variables = json.loads(parse_qs(urlsplit(url).query).get("variables", ["{}"])[0])
+            response_tweet_id = variables.get("focalTweetId") or variables.get("tweetId")
+            if response_tweet_id is not None and response_tweet_id != tweet_id:
+                return
             body = await response.json()
-            tweet_result = _extract_tweet_data(body)
+            if body.get("errors"):
+                return
+            tweet_result = _extract_tweet_data(body, tweet_id)
             if tweet_result is not None:
                 metrics = _parse_metrics(tweet_result)
-                if not metrics_future.done():
-                    metrics_future.set_result(metrics)
+                if not future.done():
+                    future.set_result(metrics)
                     logger.info(
                         "GraphQL 数値取得成功: imp=%d, likes=%d, rt=%d, followers=%d",
                         metrics["impressions"],
@@ -268,6 +306,11 @@ async def fetch_metrics(page: Page, tweet_url: str) -> dict[str, Any]:
                         metrics["retweets"],
                         metrics["followers"],
                     )
+            elif response_tweet_id == tweet_id and _post_is_unavailable(body, tweet_id):
+                if not future.done():
+                    future.set_exception(PostUnavailableError(
+                        f"投稿を取得できません（X が空の投稿結果または閲覧不能を返しました）: {tweet_url}"
+                    ))
         except Exception as e:
             logger.debug("GraphQL レスポンス解析スキップ: %s", e)
 

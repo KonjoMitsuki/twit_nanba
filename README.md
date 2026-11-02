@@ -146,6 +146,8 @@ PYTHONPATH=. python scripts/backfill_account_metrics.py --db ./app.db
 
 Collector は新規作品、計測スナップショット、状態更新を Notion と App DB の双方へ保存します。片方の保存に失敗しても処理を継続し、`Notion ... 成功/失敗` と `App DB ... 成功/失敗` のログで確認できます。
 
+Xから投稿の不存在・閲覧不能を示す応答が返った場合は、現在のステージと過去のスナップショットを保ち、次回確認を24時間後に延期します。再確認の間隔は `config.py` の `UNAVAILABLE_POST_RETRY_SEC` で変更できます。通常の応答待ちタイムアウトは設定された待機時間で1回再試行します。
+
 ### 自動検知モード（推奨）
 
 `.env` に `X_SCREEN_NAME` を設定すれば、**新しいイラストの投稿が自動で検知・登録されます**。手動での URL 登録は不要です。

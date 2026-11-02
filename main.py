@@ -23,7 +23,7 @@ import fcntl
 import logging
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import config
 from notion_client_wrapper import artworks, metrics_db
@@ -32,7 +32,7 @@ from processing import scheduler, new_fans
 from processing.character_mapper import characters_for_tags
 from storage import app_db, fans_db, backup_db
 from scraper.browser import create_browser_context, random_wait
-from scraper.metrics import fetch_metrics
+from scraper.metrics import PostUnavailableError, fetch_metrics
 from scraper.fans import fetch_likers
 from scraper.auto_detect import (
     check_new_art_post,
@@ -102,6 +102,26 @@ async def process_artwork(
     # ─── 1. GraphQL 傍受で数値取得 ───
     try:
         metrics = await fetch_metrics(page, url)
+    except PostUnavailableError as e:
+        next_retry = datetime.now(timezone.utc) + timedelta(
+            seconds=config.UNAVAILABLE_POST_RETRY_SEC
+        )
+        logger.warning(
+            "%s。ステージ %s を維持し、次回確認: %s",
+            e, current_status, next_retry.isoformat(),
+        )
+        try:
+            artworks.update_status(page_id, current_status, next_retry)
+        except Exception as update_error:
+            logger.error("Notion 再確認予定の保存失敗: %s", update_error)
+        if app_artwork_id:
+            try:
+                app_db.update_artwork(
+                    app_artwork_id, next_schedule=next_retry.isoformat()
+                )
+            except Exception as update_error:
+                logger.error("App DB 再確認予定の保存失敗: %s", update_error)
+        return set()
     except TimeoutError as e:
         logger.error("数値取得タイムアウト: %s", e)
         return set()

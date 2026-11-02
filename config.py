@@ -83,6 +83,9 @@ PROFILE_LOAD_RETRY_TIMEOUT_SEC: float = 60.0
 GRAPHQL_TIMEOUT_SEC: float = 30.0
 GRAPHQL_RETRY_TIMEOUT_SEC: float = 45.0
 
+# 不存在・閲覧不能の投稿は、現在のステージを保ったまま翌日再確認する。
+UNAVAILABLE_POST_RETRY_SEC: float = 24 * 60 * 60
+
 # 対象ゼロ時の無負荷終了待機（秒）
 NO_TARGET_WAIT_SEC: float = 0.5
 
