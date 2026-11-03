@@ -1,8 +1,8 @@
 """
 config.py — システム全体の設定管理
 
-.env から環境変数を読み込み、計測スケジュール・状態遷移テーブル・
-アンチスクレイピングパラメータなどの定数を一元管理します。
+.env から環境変数を読み込み、計測スケジュール、ステージの遷移順序、
+アクセス頻度や待機時間などの設定をまとめて管理します。
 """
 
 import os
@@ -43,7 +43,7 @@ X_AUTH_STATE_PATH: str = os.getenv(
 # 各ステージの定義:
 #   name       : ステータス名（Notion セレクトプロパティ値）
 #   offset_sec : 投稿日時からの経過秒数
-#   with_fans  : True ならユーザー照合（いいねモーダル取得）を実施
+#   with_fans  : True ならいいねしたユーザーを取得し、過去の反応者名簿と照合
 SCHEDULE_STAGES: list[dict] = [
     {"name": "5m",  "offset_sec": 300,  "with_fans": False},
     {"name": "15m", "offset_sec": 900,  "with_fans": False},
@@ -86,7 +86,7 @@ GRAPHQL_RETRY_TIMEOUT_SEC: float = 45.0
 # 不存在・閲覧不能の投稿は、現在のステージを保ったまま翌日再確認する。
 UNAVAILABLE_POST_RETRY_SEC: float = 24 * 60 * 60
 
-# 対象ゼロ時の無負荷終了待機（秒）
+# 処理対象がない場合、終了するまでの待機時間（秒）
 NO_TARGET_WAIT_SEC: float = 0.5
 
 # =============================================================================

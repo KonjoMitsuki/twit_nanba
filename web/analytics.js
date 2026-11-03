@@ -384,7 +384,7 @@
     return (
       !(panel.filters?.length || panel.formulas?.length) ||
       confirm(
-        "絞り込みと計算式を解除して種類を変えますか？",
+        "データの種類を変えると、絞り込みと計算式が解除されます。変更しますか？",
       )
     );
   }
@@ -649,7 +649,7 @@
       (state.dirty.has(view.id) ||
         state.recovery.some((draft) => draft.id === view.id))
     ) {
-      toast("未保存の変更があります。保存・復元してからロックしてください");
+      toast("未保存の変更があります。保存するか、最後に保存した状態へ戻してからロックしてください");
       return;
     }
     const button = $("#toggle-lock");
@@ -1257,7 +1257,7 @@
         fmt(data.excluded_count),
         "件",
         "集計から除外",
-        "未計測・計算不能はゼロにしません",
+        "未計測の値や計算できない値は0として扱いません",
       ],
     ];
     $("#insights").innerHTML = values

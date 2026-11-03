@@ -77,7 +77,7 @@ X（旧Twitter）の GraphQL API において、**ユーザーオブジェクト
 | フォロワー数キー | `legacy.followers_count` | `relationship_counts.followers`（推定） |
 | `legacy` フィールド | ユーザー詳細を格納する `dict` | **`None`**（廃止） |
 
-コードは `legacy.followers_count` のパスのみを参照していたため、`legacy` が `None` の時点で取得に失敗。再帰フォールバック（`_find_followers_count`）も `followers_count` というキー名のみを探索していたため、新しい `relationship_counts.followers` を発見できなかった。
+コードは `legacy.followers_count` のパスのみを参照していたため、`legacy` が `None` だと取得できなかった。取得に失敗した場合にレスポンスを再帰的に探索する処理（`_find_followers_count`）も、`followers_count` というキー名だけを探していたため、新しい `relationship_counts.followers` を発見できなかった。
 
 #### なぜ他のメトリクスは影響を受けなかったか
 
@@ -104,7 +104,7 @@ tweet_result
 
 **変更**: `_extract_user_followers_count()` と `_find_followers_count()` を書き換え、旧構造（`legacy.followers_count`）と新構造（`relationship_counts.followers`）の**両方**を探索するように修正。
 
-**意図**: X の GraphQL 構造は頻繁に変更されるため、特定のパスへの依存を減らし、複数の候補パスをフォールバック付きで探索する堅牢な設計とした。今後さらに構造が変わった場合でも、WARNING ログで未知のキー構造が自動的にダンプされ、速やかに対応できるようにした。
+X の GraphQL 構造は頻繁に変更されるため、1つのパスで取得できなければ別の候補を探索する設計にした。今後さらに構造が変わった場合も速やかに対応できるよう、未知のキー構造を WARNING ログに自動で出力するようにした。
 
 #### `_extract_user_followers_count()` の修正
 
@@ -371,4 +371,3 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 | `scraper/metrics.py` | `_extract_user_followers_count()`: `relationship_counts` からの取得を追加。`_find_followers_count()`: `followers` キー対応を追加。旧デバッグログの削除 |
 | `main.py` | 実行開始バナーを無負荷判定の後に移動、無負荷時のログ削除、httpx/httpcore ロガーを `WARNING` に設定 |
 | `tests/test_metrics.py` | 新 API 構造（`relationship_counts.followers`）のテストケース追加 |
-

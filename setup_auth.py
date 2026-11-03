@@ -1,5 +1,5 @@
 """
-generate_auth.py — ブラウザのCookieから直接 auth_state.json を生成するスクリプト
+setup_auth.py — ブラウザのCookieを入力して auth_state.json を作成するスクリプト
 """
 import json
 import time

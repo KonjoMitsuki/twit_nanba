@@ -36,8 +36,8 @@ window.AnalyticsSettings = function (dependencies) {
   function dataHtml(p) {
     const dates = p.from_date || p.to_date;
     const custom = Boolean(dates) || (periodModes.get(p.id) ?? false);
-    let html = field("種類", sourceCardsHtml(p), "作品は指定時点の1作品、ログは1回の計測、フォロワーはアカウント全体の1計測です。期間は作品・ログが投稿日、フォロワーが計測日を基準にします。", "source");
-    if (p.source === "artworks") html += field("時点", select("stage",p.stage,Object.fromEntries(state.metadata.stages.map(stage => [stage.name,stage.name]))), "未計測の作品は0にせず除外します。", "stage");
+    let html = field("種類", sourceCardsHtml(p), "1行が表すデータは、作品では指定した時点の1作品、ログでは1作品の1回の計測、フォロワーではアカウント全体の1回の計測です。期間は、作品・ログでは投稿日、フォロワーでは計測日で絞り込みます。", "source");
+    if (p.source === "artworks") html += field("時点", select("stage",p.stage,Object.fromEntries(state.metadata.stages.map(stage => [stage.name,stage.name]))), "選んだ時点で未計測の作品は、値を0とせず集計から除外します。", "stage");
     html += field("期間", `<fieldset class="period-switch" aria-label="期間">${[[7,"7日"],[30,"30日"],[90,"90日"],[0,"全期間"]].map(([days,label]) => `<button type="button" data-preset-days="${days}" aria-pressed="${!custom && !dates && p.period_days === days}">${label}</button>`).join("")}<button type="button" data-custom-period aria-pressed="${custom}">指定</button></fieldset>`, "", "period");
     if (custom) html += `<div class="custom-period">${field("開始",input("from_date",p.from_date,"date"))}${field("終了",input("to_date",p.to_date,"date"))}</div>`;
     return html;
@@ -46,14 +46,14 @@ window.AnalyticsSettings = function (dependencies) {
     const single = ["pie","scatter","box","histogram"].includes(p.chart);
     const numbers = fieldOptions(p,{ numeric:true, rowOnly:["scatter","box","histogram"].includes(p.chart) });
     const label = ["pie","box","histogram"].includes(p.chart) ? "指標" : "縦軸";
-    if (single) return field(label, `<select data-single-y aria-label="${label}">${!(p.y[0] in numbers) ? `<option value="${esc(p.y[0])}" selected disabled>${esc(p.y[0])}（変更）</option>` : ""}${Object.entries(numbers).map(([key,text]) => `<option value="${esc(key)}" ${key === p.y[0] ? "selected" : ""}>${esc(text)}</option>`).join("")}</select>`, "指標を変更すると、選んだ1指標を使用します。", "y");
+    if (single) return field(label, `<select data-single-y aria-label="${label}">${!(p.y[0] in numbers) ? `<option value="${esc(p.y[0])}" selected disabled>${esc(p.y[0])}（変更）</option>` : ""}${Object.entries(numbers).map(([key,text]) => `<option value="${esc(key)}" ${key === p.y[0] ? "selected" : ""}>${esc(text)}</option>`).join("")}</select>`, "変更後は、ここで選んだ1つの指標だけを使用します。", "y");
     return field(label, `<div class="metric-picker"><div class="metric-chips">${p.y.map(key => `<button type="button" data-remove-y="${esc(key)}" aria-label="${esc(fieldLabel(p,key))}を削除" ${p.y.length <= 1 ? "disabled" : ""}>${esc(fieldLabel(p,key))} ×</button>`).join("")}</div><select data-add-y aria-label="指標を追加" ${p.y.length >= 6 ? "disabled" : ""}><option value="">＋ 追加</option>${Object.entries(numbers).filter(([key]) => !p.y.includes(key)).map(([key,text]) => `<option value="${esc(key)}">${esc(text)}</option>`).join("")}</select></div>`, "最大6指標です。", "y");
   }
   function axesHtml(p) {
     const rows = fieldOptions(p,{rowOnly:true});
     if (p.chart === "table") {
       const columns = `<div class="metric-chips">${p.columns.map(key => `<button type="button" data-remove-column="${esc(key)}" aria-label="${esc(rows[key] || key)}列を外す">${esc(rows[key] || key)} ×</button>`).join("")}</div><select data-add-column aria-label="表示列を追加"><option value="">＋ 追加</option>${Object.entries(rows).filter(([key]) => !p.columns.includes(key)).map(([key,label]) => `<option value="${esc(key)}">${esc(label)}</option>`).join("")}</select>`;
-      return field("列",columns,"列の順番は保存した選択順です。","columns") + (p.source !== "followers" ? toggle("show_images",p.show_images !== false,"写真") : "");
+      return field("列",columns,"列は選択した順に並び、その順番で保存されます。","columns") + (p.source !== "followers" ? toggle("show_images",p.show_images !== false,"写真") : "");
     }
     let html = "";
     if (p.chart !== "histogram") {
@@ -71,7 +71,7 @@ window.AnalyticsSettings = function (dependencies) {
   }
   function tableDetailsHtml(p) {
     const rows = fieldOptions(p,{rowOnly:true}), sorts = AnalysisTable.sortsFor(p);
-    let html = field("グループ",select("table_group",p.table_group || "",{"":"なし",...rows}),"複数値は個別または組み合わせでまとめます。");
+    let html = field("グループ",select("table_group",p.table_group || "",{"":"なし",...rows}),"キャラクターやタグが複数ある場合は、値ごとに分けるか、組み合わせごとにまとめるかを選べます。");
     if (p.table_group) {
       html += field("グループ順",select("table_group_order",p.table_group_order,{asc:"昇順",desc:"降順"}));
       const kind = state.metadata.sources[p.source].find(field => field.key === p.table_group)?.type;
@@ -86,16 +86,16 @@ window.AnalyticsSettings = function (dependencies) {
     return html;
   }
   function detailsHtml(p) {
-    let html = field("名前",input("title",p.title,"text",'maxlength="120"')) + field("日数",input("period_days",p.period_days,"number",'min="0" max="3660"'),"0は全期間で、日付の指定がある場合は日付を優先します。");
+    let html = field("名前",input("title",p.title,"text",'maxlength="120"')) + field("日数",input("period_days",p.period_days,"number",'min="0" max="3660"'),"0を指定すると全期間を対象にします。日付も指定している場合は、日付を優先します。");
     if (p.chart === "table") return html + tableDetailsHtml(p);
     const rows = fieldOptions(p,{rowOnly:true});
     if (p.chart !== "pie") html += field("系列",select("series",p.series,{"":"なし",...rows}),"項目ごとに色分けします。");
     if (["line","bar","pie"].includes(p.chart)) html += field("集計",select("aggregate",p.aggregate,aggregateLabels),"同じ分類のデータをまとめる方法です。");
     if (p.chart === "line") {
       html += field("変換",select("transform",p.transform,{none:"なし",delta:"増加数",rate:"増加率",moving_average:"移動平均"}));
-      if (p.transform === "moving_average") html += field("点数",input("window",p.window,"number",'min="2" max="100"'),"移動平均に使用する観測点数です。");
+      if (p.transform === "moving_average") html += field("点数",input("window",p.window,"number",'min="2" max="100"'),"移動平均を計算する観測点の数です。日数ではありません。");
     }
-    if (["line","bar","scatter"].includes(p.chart) && p.source !== "followers") html += field("配分",select("allocation",p.allocation,p.chart === "scatter" ? {full:"全量",combination:"組み合わせ"} : {full:"全量",split:"均等",combination:"組み合わせ"}),"全量は各キャラに同じ値、均等はキャラ数で分割、組み合わせは共演ごとの集計です。");
+    if (["line","bar","scatter"].includes(p.chart) && p.source !== "followers") html += field("配分",select("allocation",p.allocation,p.chart === "scatter" ? {full:"全量",combination:"組み合わせ"} : {full:"全量",split:"均等",combination:"組み合わせ"}),"「全量」は各キャラクターに同じ値を計上します。「均等」はキャラクター数で値を分けます。「組み合わせ」は一緒に描かれたキャラクターの組ごとに集計します。");
     if (!["table","pie","scatter"].includes(p.chart)) html += toggle("compare_previous",p.compare_previous,"前期間比較","直前の同じ長さの期間と比較します。");
     if (p.chart === "scatter") html += toggle("show_images",p.show_images !== false,"作品カード");
     if (p.chart !== "pie") {
@@ -128,7 +128,7 @@ window.AnalyticsSettings = function (dependencies) {
     if (p.chart !== "line" && p.transform !== "none") items.push(["transform","変換を解除"]);
     if (["table","pie","scatter"].includes(p.chart) && p.compare_previous) items.push(["compare_previous","比較を解除"]);
     if (p.chart === "pie" && p.y.length > 1) items.push(["y","指標を1つに"]);
-    return items.map(([key,label]) => `<button type="button" class="quiet-button" data-resolve-chart="${key}">${label}</button>${help(label,"保持した設定はこの形式で使えません。解除するか元の形式へ戻してください。")}`).join("");
+    return items.map(([key,label]) => `<button type="button" class="quiet-button" data-resolve-chart="${key}">${label}</button>${help(label,"変更前の設定が残っていますが、今の表示形式では使えません。この設定を解除するか、元の表示形式に戻してください。")}`).join("");
   }
   function sectionDefinitions(p) {
     return [

@@ -5,10 +5,10 @@ cron から定期実行されることを想定したスクリプトです。
 Notion の作品マスターDB から「次回予定 <= 現在時刻」の作品を取得し、
 各作品について以下を実行します:
 
-1. GraphQL 傍受でエンゲージメント数値取得
+1. GraphQL レスポンスからいいね・RT・インプレッションの数値を取得
 2. ユーザー照合ステージの場合:
    - いいねモーダルから反応者一覧取得
-   - 差集合演算で新規反応者を算出・登録
+   - 過去の反応者名簿にないユーザーを新規反応者として登録
 3. 時系列メトリクスDBにスナップショット保存
 4. 次ステージへの状態遷移
 
@@ -66,10 +66,10 @@ async def process_artwork(
     Args:
         page: Playwright の Page オブジェクト。
         artwork_info: artworks.extract_artwork_info() で取得した作品情報辞書。
-        known_users: SQLiteに保存された既知ユーザー集合（参照渡しで更新される）。
+        known_users: SQLiteに保存済みの反応者の集合。処理中に新規反応者を追加する。
 
     Returns:
-        set[str]: この作品で新たに検知された新規ユーザーの集合。
+        set[str]: この作品で初めて検知した反応者の集合。
     """
     page_id = artwork_info["page_id"]
     url = artwork_info["url"]
@@ -78,7 +78,8 @@ async def process_artwork(
     current_new_fans_count = artwork_info["new_fans_count"]
     app_artwork_id: str | None = None
 
-    # App DB の作品行を先に確保する。既存データは tweet_id / URL で UPSERT される。
+    # 計測結果の保存先となる作品を先に App DB に登録する。
+    # tweet_id / URL が既存の作品と一致する場合は、その作品を更新する。
     try:
         app_artwork_id = app_db.upsert_artwork(
             tweet_id=url.rstrip("/").split("/")[-1],
@@ -359,7 +360,7 @@ async def run(headless: bool = True) -> None:
                 sq_images = sq_info["image_urls"]
                 sq_scheduled_at = sq_info.get("scheduled_at")
 
-                # ★ 追加: 他のプロセスが拾わないようにステータスを PREPARING に変更（ロック）
+                # 他のプロセスが同じ投稿を処理しないよう、ステータスを PREPARING に変更する。
                 schedule_queue.mark_as_preparing(sq_page_id)
 
                 logger.info(
@@ -453,8 +454,8 @@ async def run(headless: bool = True) -> None:
                 await random_wait()
 
         # ── 新着イラスト自動検知（ブラウザセッション共有） ──
-        # メトリクス取得のためにブラウザを開いた「ついで」に
-        # プロフィールを確認し、無駄なブラウザ起動を削減する
+        # 数値の取得とプロフィールの確認でブラウザを共有し、
+        # プロフィール確認だけのために別のブラウザを起動しない。
         if need_auto_detect:
             try:
                 follower_slot = mark_follower_attempt() if follower_slot_due else None
@@ -471,8 +472,8 @@ async def run(headless: bool = True) -> None:
                         result.followers,
                     )
                 if result.detected:
-                    # 新規登録が行われた場合、対象作品リストを再取得
-                    # （次回のcron実行で拾われるので、ここでは再取得不要）
+                    # 新規登録した作品は次回のcron実行で取得するため、
+                    # ここでは対象作品リストを再取得しない。
                     logger.info(
                         "📌 新規イラストを登録済み — "
                         "次回実行時に追跡を開始します"

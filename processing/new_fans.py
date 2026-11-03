@@ -1,8 +1,8 @@
 """
 processing/new_fans.py — 新規反応者判定アルゴリズム
 
-過去の全反応者集合 U_past と今回の反応者集合 U_current の差集合を求め、
-新規反応者を判定します。
+今回の反応者集合 U_current から、過去の反応者集合 U_past に含まれるユーザーを除き、
+残ったユーザーを新規反応者と判定します。
 
     U_new = U_current \\ U_past
     N_new = |U_new|
@@ -21,7 +21,7 @@ def compute_new_fans(
     current_likers: Set[str],
     known_users: Set[str],
 ) -> Set[str]:
-    """差集合演算で新規反応者を算出する。
+    """今回の反応者のうち、保存済みの名簿にないユーザーを返す。
 
     Args:
         current_likers: 今回の投稿の反応者 @screen_name 集合。

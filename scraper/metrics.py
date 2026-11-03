@@ -120,8 +120,8 @@ def _parse_metrics(tweet_result: dict[str, Any]) -> dict[str, Any]:
     likes = legacy.get("favorite_count", 0)
     retweets = legacy.get("retweet_count", 0)
 
-    # X の GraphQL 構造は年々変わるため、まず投稿者の明示的パスを優先し、
-    # それが取れない場合のみ全探索フォールバックを使う。
+    # X の GraphQL 構造は年々変わるため、まず投稿者情報の既知のパスを探す。
+    # そこから取得できない場合に限り、レスポンス全体を再帰的に探索する。
 
     followers = _extract_user_followers_count(tweet_result)
 
@@ -146,7 +146,7 @@ def _extract_user_followers_count(tweet_result: dict[str, Any]) -> int:
       - 旧: core.user_results.result.legacy.followers_count
       - 新: core.user_results.result.relationship_counts.followers
             (キー名は followers / followers_count 等を試行)
-    見つからない場合のみ全探索フォールバックを使う。
+    これらのパスで見つからない場合に限り、レスポンス全体を再帰的に探索する。
     """
     candidates: list[dict[str, Any]] = []
 

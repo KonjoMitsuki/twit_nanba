@@ -3,7 +3,7 @@ scraper/fans.py — いいねモーダルからの反応者一覧取得
 
 ツイートのいいね数リンクをクリックしてモーダルを開き、
 表示されたユーザーの @screen_name を抽出します。
-スクロール制限（最大 200件 / 最大 5回スクロール）を遵守します。
+ユーザーの取得は最大 200件、スクロールは最大 5回に制限します。
 """
 
 import logging
@@ -25,7 +25,7 @@ async def fetch_likers(page: Page, tweet_url: str) -> Set[str]:
 
     Args:
         page: Playwright の Page オブジェクト（ツイートページ表示済み）。
-        tweet_url: 対象ツイートの URL（ページ遷移が必要な場合のフォールバック用）。
+        tweet_url: 対象ツイートの URL。現在のページが対象ツイートでない場合の移動先。
 
     Returns:
         set[str]: 反応者の @screen_name の集合（重複なし）。

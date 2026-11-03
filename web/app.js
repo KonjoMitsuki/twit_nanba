@@ -87,7 +87,7 @@ async function pollDetection() {
     if (result.status === 'failed') throw new Error(result.message);
     if (result.status === 'registered' || result.status === 'already_registered') {
       showDetectionFeedback(result.status === 'registered'
-        ? '作品を追加しました。数値の計測は定期実行で行います。'
+        ? '作品を追加しました。いいねなどの数値は、今後の定期処理で計測します。'
         : 'この投稿は登録済みです。');
       if (result.posted_at) state.date = new Date(result.posted_at);
     } else {

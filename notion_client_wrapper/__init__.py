@@ -2,7 +2,7 @@
 notion_client_wrapper — Notion API ラッパーパッケージ
 
 作品マスターDBと時系列メトリクスDBへの
-CRUD 操作を提供します。
+データの作成・取得・更新・削除（CRUD）を行う操作を提供します。
 """
 
 from notion_client import Client

@@ -116,7 +116,7 @@ function setupCharacterEditor(artwork) {
       const suggestion = await request(`/api/artworks/${id}/character/suggestion`);
       if (suggestion.characters?.length) {
         value.value = suggestion.characters.join('、');
-        setStatus('タグから入力しました。保存すると反映されます');
+        setStatus('タグに対応するキャラクター名を入力しました。保存すると反映されます');
       } else {
         setStatus('対応するタグがありません');
       }
