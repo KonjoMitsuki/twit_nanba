@@ -1,0 +1,15 @@
+[Unit]
+Description=Watch twit_nanba Python code for Web/API restart
+
+[Path]
+PathChanged=@PROJECT_ROOT@/api
+PathChanged=@PROJECT_ROOT@/storage
+PathChanged=@PROJECT_ROOT@/processing
+PathChanged=@PROJECT_ROOT@/scraper
+PathChanged=@PROJECT_ROOT@/notion_client_wrapper
+PathChanged=@PROJECT_ROOT@/config.py
+PathChanged=@PROJECT_ROOT@/.env
+Unit=twit_nanba-code-restart.service
+
+[Install]
+WantedBy=multi-user.target

@@ -125,6 +125,8 @@ python -m venv .venv
 make web HOST=0.0.0.0 PORT=8000 APP_DB_PATH=./app.db
 ```
 
+本番でsystemdを使う場合は、[コード更新時のWeb/API自動再起動](docs/systemd-code-watch.md)を設定できます。収集処理の終了を待ってWeb/APIを再起動し、DBやログの更新は監視対象にしません。
+
 過去の Notion データは、本番サーバーで `.env` を配置した後に次を一度実行してください。
 
 ```bash

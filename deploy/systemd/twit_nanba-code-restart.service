@@ -1,0 +1,11 @@
+[Unit]
+Description=Restart twit_nanba Web/API after code changes
+ConditionPathIsDirectory=@PROJECT_ROOT@
+
+[Service]
+Type=oneshot
+# Let a short multi-file update finish before restarting.
+ExecStartPre=/usr/bin/sleep 5
+# Use the same cross-process lock as the collector and manual registration.
+ExecStart=/usr/bin/flock --exclusive @PROJECT_ROOT@/.process.lock /usr/bin/systemctl restart twit_nanba.service
+TimeoutStartSec=infinity
